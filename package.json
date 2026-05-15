@@ -1,0 +1,22 @@
+{
+  "name": "mypi",
+  "version": "0.0.1",
+  "description": "PlebbyG's personal Pi agent configurations managed as a Pi git package.",
+  "keywords": [
+    "pi-package"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PlebeiusGaragicus/dot-pi.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "bash scripts/hello-world.sh"
+  },
+  "pi": {
+    "extensions": ["extensions/agent-mode.ts", "extensions/rainbow-editor.ts"],
+    "skills": [],
+    "prompts": [],
+    "themes": []
+  }
+}

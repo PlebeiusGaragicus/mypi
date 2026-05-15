@@ -1,0 +1,465 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+TODO_VERSION="0.1.0"
+
+command -v jq >/dev/null 2>&1 || {
+	echo "todo: jq is required" >&2
+	exit 1
+}
+
+TODO_FILE=""
+
+resolve_todo_file() {
+	local dir="$PWD"
+	while true; do
+		if [[ -f "$dir/todo.jsonl" ]]; then
+			TODO_FILE="$dir/todo.jsonl"
+			return 0
+		fi
+		if [[ "$dir" == "/" ]]; then
+			mkdir -p "$HOME/.todo"
+			TODO_FILE="$HOME/.todo/todo.jsonl"
+			[[ -f "$TODO_FILE" ]] || : >"$TODO_FILE"
+			return 0
+		fi
+		dir="$(dirname "$dir")"
+	done
+}
+
+usage() {
+	cat <<'EOF'
+usage:
+  todo                    show usage
+  todo list               list open (not done) tasks as markdown
+  todo done               list finished tasks as markdown
+  todo all                list all tasks as markdown (open and finished)
+  todo new "foo"          add a task
+  todo edit <id>          edit a task in your editor (VISUAL, EDITOR, default nano)
+  todo edit <id> "bar"    edit a task's text (inline)
+  todo del <id>           delete a task
+  todo finish <id>        mark task finished
+  todo unfinish <id>      mark task not finished
+  todo file [-y|--yes]    create todo.jsonl in the current directory (prompts unless -y/--yes)
+  todo which              print path to active todo.jsonl
+  todo rm [-y|--yes]      delete active todo.jsonl (prompts unless -y/--yes)
+  todo tidy [-y|--yes]    remove all finished tasks (prompts unless -y/--yes)
+  todo help               show this help
+  todo version            print version
+
+
+EOF
+}
+
+validate_id() {
+	local id="$1"
+	if [[ ! "$id" =~ ^[0-9]+$ ]]; then
+		echo "todo: invalid id (expected non-negative integer): $id" >&2
+		exit 1
+	fi
+}
+
+id_exists() {
+	local id="$1"
+	[[ -s "$TODO_FILE" ]] || return 1
+	jq -es --argjson id "$id" 'any(.[]; .id == $id)' "$TODO_FILE" >/dev/null
+}
+
+# One compact JSON object for task id (caller must have resolve_todo_file; task must exist).
+task_json_compact() {
+	local id="$1"
+	jq -s --argjson id "$id" 'map(select(.id == $id)) | .[0]' -c "$TODO_FILE"
+}
+
+# Human-readable line from one task JSON object (same style as todo list / todo all).
+task_readable_line() {
+	local json="$1"
+	jq -r 'if .done then "- [x] (\(.id)) \(.text)" else "- [ ] (\(.id)) \(.text)" end' <<<"$json"
+}
+
+# Line for a removed task (not the checkbox style).
+task_deleted_line() {
+	local json="$1"
+	jq -r '"Deleted: (\(.id)) \(.text)"' <<<"$json"
+}
+
+write_jsonl() {
+	local tmp
+	tmp="$(mktemp)"
+	if cat >"$tmp"; then
+		mv "$tmp" "$TODO_FILE"
+	else
+		rm -f "$tmp"
+		return 1
+	fi
+}
+
+abs_path() {
+	local f="$1"
+	printf '%s\n' "$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+}
+
+print_todo_list_empty() {
+	echo "Your todo list is empty."
+}
+
+cmd_file() {
+	local force=false
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-y | --yes)
+			force=true
+			shift
+			;;
+		*)
+			echo 'todo: usage: todo file [-y|--yes]' >&2
+			exit 1
+			;;
+		esac
+	done
+	local target="$PWD/todo.jsonl"
+	if [[ -e "$target" ]]; then
+		echo "todo: todo.jsonl already exists here: $(abs_path "$target")" >&2
+		exit 1
+	fi
+	local path
+	path="$(abs_path "$target")"
+	if ! $force; then
+		local ans
+		if ! read -r -p "Create ${path}? [y/N] " ans </dev/tty; then
+			echo "todo: cannot prompt (not a tty); use todo file --yes" >&2
+			exit 1
+		fi
+		ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+		if [[ "$ans" != "y" && "$ans" != "yes" ]]; then
+			echo "todo: cancelled" >&2
+			exit 1
+		fi
+	fi
+	: >"$target"
+	printf 'created %s\n' "$path"
+}
+
+cmd_which() {
+	resolve_todo_file
+	abs_path "$TODO_FILE"
+}
+
+cmd_rm() {
+	local force=false
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-y | --yes)
+			force=true
+			shift
+			;;
+		*)
+			echo 'todo: usage: todo rm [-y|--yes]' >&2
+			exit 1
+			;;
+		esac
+	done
+	resolve_todo_file
+	if [[ ! -f "$TODO_FILE" ]]; then
+		echo "todo: no todo file to remove at $(abs_path "$TODO_FILE")" >&2
+		exit 1
+	fi
+	local path
+	path="$(abs_path "$TODO_FILE")"
+	if ! $force; then
+		local ans
+		if ! read -r -p "Delete ${path}? [y/N] " ans </dev/tty; then
+			echo "todo: cannot prompt (not a tty); use todo rm --yes" >&2
+			exit 1
+		fi
+		ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+		if [[ "$ans" != "y" && "$ans" != "yes" ]]; then
+			echo "todo: cancelled" >&2
+			exit 1
+		fi
+	fi
+	rm -- "$TODO_FILE"
+	printf 'removed %s\n' "$path"
+}
+
+cmd_tidy() {
+	local force=false
+	while [[ $# -gt 0 ]]; do
+		case "$1" in
+		-y | --yes)
+			force=true
+			shift
+			;;
+		*)
+			echo 'todo: usage: todo tidy [-y|--yes]' >&2
+			exit 1
+			;;
+		esac
+	done
+	resolve_todo_file
+	if [[ ! -f "$TODO_FILE" ]] || [[ ! -s "$TODO_FILE" ]]; then
+		return 0
+	fi
+	local n_done
+	n_done="$(jq -s 'map(select(.done == true)) | length' "$TODO_FILE")"
+	if [[ "$n_done" -eq 0 ]]; then
+		echo "todo: no finished tasks to remove" >&2
+		return 0
+	fi
+	local path
+	path="$(abs_path "$TODO_FILE")"
+	if ! $force; then
+		local ans
+		if ! read -r -p "Remove ${n_done} finished task(s) from ${path}? [y/N] " ans </dev/tty; then
+			echo "todo: cannot prompt (not a tty); use todo tidy --yes" >&2
+			exit 1
+		fi
+		ans=$(printf '%s' "$ans" | tr '[:upper:]' '[:lower:]')
+		if [[ "$ans" != "y" && "$ans" != "yes" ]]; then
+			echo "todo: cancelled" >&2
+			exit 1
+		fi
+	fi
+	jq -s 'map(select(.done != true)) | .[] | .' -c "$TODO_FILE" | write_jsonl
+	printf 'removed %s finished task(s) from %s\n' "$n_done" "$path"
+}
+
+cmd_list() {
+	resolve_todo_file
+	local n_open
+	if [[ ! -s "$TODO_FILE" ]]; then
+		n_open=0
+	else
+		n_open="$(jq -s 'map(select(.done != true)) | length' "$TODO_FILE")"
+	fi
+	if [[ "$n_open" -eq 0 ]]; then
+		print_todo_list_empty
+		return 0
+	fi
+	jq -r 'select(.done != true) | "- [ ] (\(.id)) \(.text)"' "$TODO_FILE"
+}
+
+cmd_all() {
+	resolve_todo_file
+	local n_tasks
+	if [[ ! -s "$TODO_FILE" ]]; then
+		n_tasks=0
+	else
+		n_tasks="$(jq -s 'length' "$TODO_FILE")"
+	fi
+	if [[ "$n_tasks" -eq 0 ]]; then
+		print_todo_list_empty
+		return 0
+	fi
+	jq -r 'if .done then "- [x] (\(.id)) \(.text)" else "- [ ] (\(.id)) \(.text)" end' "$TODO_FILE"
+}
+
+cmd_done_list() {
+	resolve_todo_file
+	[[ ! -s "$TODO_FILE" ]] && return 0
+	jq -r 'select(.done == true) | "- [x] (\(.id)) \(.text)"' "$TODO_FILE"
+}
+
+cmd_new() {
+	local text="$*"
+	if [[ -z "$text" ]]; then
+		echo 'todo: new requires non-empty text' >&2
+		exit 1
+	fi
+	resolve_todo_file
+	local next_id
+	if [[ ! -s "$TODO_FILE" ]]; then
+		next_id=0
+	else
+		next_id="$(jq -s 'map(.id) | max // -1 | . + 1' "$TODO_FILE")"
+	fi
+	local line
+	line="$(jq -nc --arg text "$text" --argjson id "$next_id" '{id: $id, text: $text, done: false}')"
+	printf '%s\n' "$line" >>"$TODO_FILE"
+	printf '%s\n' "$(task_readable_line "$line")"
+}
+
+apply_task_text() {
+	local id="$1"
+	local text="$2"
+	jq -s --argjson id "$id" --arg text "$text" 'map(if .id == $id then .text = $text else . end) | .[] | .' -c "$TODO_FILE" | write_jsonl
+}
+
+cmd_edit() {
+	local id="$1"
+	shift
+	local text="$*"
+	validate_id "$id"
+	if [[ -z "$text" ]]; then
+		echo 'todo: edit requires new text' >&2
+		exit 1
+	fi
+	resolve_todo_file
+	if ! id_exists "$id"; then
+		echo "todo: no task with id $id" >&2
+		exit 1
+	fi
+	apply_task_text "$id" "$text"
+	printf '%s\n' "$(task_readable_line "$(task_json_compact "$id")")"
+}
+
+cmd_edit_interactive() {
+	local id="$1"
+	validate_id "$id"
+	resolve_todo_file
+	if ! id_exists "$id"; then
+		echo "todo: no task with id $id" >&2
+		exit 1
+	fi
+	local current
+	current="$(jq -s --argjson id "$id" 'map(select(.id == $id)) | .[0].text // empty' -r "$TODO_FILE")"
+	local ed="${VISUAL:-${EDITOR:-nano}}"
+	local ed_bin="${ed%% *}"
+	if ! command -v "$ed_bin" >/dev/null 2>&1; then
+		echo "todo: editor not found: $ed_bin (set VISUAL or EDITOR, or install nano)" >&2
+		exit 1
+	fi
+	local tmp
+	tmp="$(mktemp)" || exit 1
+	printf '%s' "$current" >"$tmp"
+	if [[ "$ed" == "$ed_bin" ]]; then
+		"$ed" "$tmp" || true
+	else
+		# shellcheck disable=SC2086 # intentional word-split for e.g. EDITOR="code --wait"
+		$ed "$tmp" || true
+	fi
+	local new_text
+	new_text="$(cat -- "$tmp")"
+	rm -f -- "$tmp"
+	if [[ -z "${new_text//[[:space:]]/}" ]]; then
+		return 0
+	fi
+	apply_task_text "$id" "$new_text"
+	printf '%s\n' "$(task_readable_line "$(task_json_compact "$id")")"
+}
+
+cmd_del() {
+	local id="$1"
+	validate_id "$id"
+	resolve_todo_file
+	if ! id_exists "$id"; then
+		echo "todo: no task with id $id" >&2
+		exit 1
+	fi
+	local removed
+	removed="$(task_json_compact "$id")"
+	jq -s --argjson id "$id" 'map(select(.id != $id)) | .[] | .' -c "$TODO_FILE" | write_jsonl
+	printf '%s\n' "$(task_deleted_line "$removed")"
+}
+
+cmd_finish() {
+	local id="$1"
+	validate_id "$id"
+	resolve_todo_file
+	if ! id_exists "$id"; then
+		echo "todo: no task with id $id" >&2
+		exit 1
+	fi
+	jq -s --argjson id "$id" 'map(if .id == $id then .done = true else . end) | .[] | .' -c "$TODO_FILE" | write_jsonl
+	printf '%s\n' "$(task_readable_line "$(task_json_compact "$id")")"
+}
+
+cmd_unfinish() {
+	local id="$1"
+	validate_id "$id"
+	resolve_todo_file
+	if ! id_exists "$id"; then
+		echo "todo: no task with id $id" >&2
+		exit 1
+	fi
+	jq -s --argjson id "$id" 'map(if .id == $id then .done = false else . end) | .[] | .' -c "$TODO_FILE" | write_jsonl
+	printf '%s\n' "$(task_readable_line "$(task_json_compact "$id")")"
+}
+
+cmd_version() {
+	printf '%s\n' "$TODO_VERSION"
+}
+
+main() {
+	case "${1:-}" in
+	"" | -h | --help | help)
+		usage
+		;;
+	file)
+		shift
+		cmd_file "$@"
+		;;
+	which)
+		cmd_which
+		;;
+	rm)
+		shift
+		cmd_rm "$@"
+		;;
+	tidy)
+		shift
+		cmd_tidy "$@"
+		;;
+	list)
+		cmd_list
+		;;
+	all)
+		cmd_all
+		;;
+	done)
+		if [[ $# -ne 1 ]]; then
+			echo 'todo: usage: todo done' >&2
+			exit 1
+		fi
+		cmd_done_list
+		;;
+	new)
+		shift
+		cmd_new "$@"
+		;;
+	edit)
+		[[ $# -ge 2 ]] || {
+			echo 'todo: usage: todo edit <id> [<new text>]' >&2
+			exit 1
+		}
+		if [[ $# -eq 2 ]]; then
+			cmd_edit_interactive "$2"
+		else
+			id="$2"
+			shift 2
+			cmd_edit "$id" "$@"
+		fi
+		;;
+	del)
+		[[ $# -eq 2 ]] || {
+			echo 'todo: usage: todo del <id>' >&2
+			exit 1
+		}
+		cmd_del "$2"
+		;;
+	finish)
+		[[ $# -eq 2 ]] || {
+			echo 'todo: usage: todo finish <id>' >&2
+			exit 1
+		}
+		cmd_finish "$2"
+		;;
+	unfinish)
+		[[ $# -eq 2 ]] || {
+			echo 'todo: usage: todo unfinish <id>' >&2
+			exit 1
+		}
+		cmd_unfinish "$2"
+		;;
+	version | --version | -v)
+		cmd_version
+		;;
+	*)
+		echo "todo: unknown command: $1" >&2
+		usage >&2
+		exit 1
+		;;
+	esac
+}
+
+main "$@"
