@@ -14,7 +14,11 @@
     "postinstall": "bash scripts/hello-world.sh"
   },
   "pi": {
-    "extensions": ["extensions/agent-mode.ts", "extensions/mypi-branding/index.ts"],
+    "extensions": [
+      "extensions/agent-mode.ts",
+      "extensions/mypi-branding/index.ts",
+      "extensions/tps-tracker.ts"
+    ],
     "skills": [],
     "prompts": [],
     "themes": ["shared/themes/github-dark-default.json"]
