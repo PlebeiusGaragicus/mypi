@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Curated PATH for skill scripts (mirrors extensions/bootstrap-path.ts).
+# Curated PATH for skill scripts (mirrors extensions/agent-mode/bootstrap-path.ts).
 # From repo root:  source scripts/bootstrap.sh
-# Pi loads extensions/bootstrap-path.ts automatically; this file is for
+# Pi loads extensions/agent-mode/index.ts (which pulls in bootstrap-path) automatically; this file is for
 # normal shells (e.g. dev outside pi).
 
 set -euo pipefail

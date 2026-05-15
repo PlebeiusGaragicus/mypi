@@ -6,6 +6,10 @@
  * are registered via `resources_discover` (paths anchored to the install root). Mode changes call `ctx.reload()` so
  * skills, prompts, themes, and tools stay in sync.
  *
+ * **`/fork` / `/clone`:** Pi emits `session_start` with `reason: "fork"` and `previousSessionFile` (parent `.jsonl`).
+ * Custom `agent-mode-state` lines are often missing on the forked leaf; we re-read the last such line from the parent
+ * file when needed, then `appendEntry` so the new session persists mode.
+ *
  * Per active profile under `agents/<profile>/`, optional markdown files control the system prompt (no
  * mode-specific branching):
  *
@@ -19,8 +23,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-/** Parent of `extensions/` — works for `pi install .`, git installs under ~/.pi, etc. */
-const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+/** Package root (parent of `extensions/`). */
+const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 type AgentMode = "chat" | "scout" | "write" | "web" | "code";
 
@@ -203,6 +207,55 @@ function statusThemeColor(mode: AgentMode): "accent" | "warning" | "success" | "
 	}
 }
 
+function isAgentModeStateEntry(e: unknown): e is AgentModeStateEntry {
+	if (!e || typeof e !== "object") return false;
+	const o = e as AgentModeStateEntry;
+	return o.type === "custom" && o.customType === "agent-mode-state";
+}
+
+/** Last `agent-mode-state` custom entry in iteration order (same as scanning `getEntries()` end-to-end). */
+function findLastSavedAgentMode(entries: Iterable<unknown>): AgentMode | undefined {
+	let lastRaw: unknown;
+	for (const e of entries) {
+		if (isAgentModeStateEntry(e)) {
+			lastRaw = (e as AgentModeStateEntry).data?.mode;
+		}
+	}
+	return parseSavedMode(lastRaw);
+}
+
+/** Read a session `.jsonl`; return the mode implied by the last `agent-mode-state` line. */
+function readLastAgentModeFromSessionFile(sessionFilePath: string): AgentMode | undefined {
+	if (!sessionFilePath || !existsSync(sessionFilePath)) return undefined;
+	let text: string;
+	try {
+		text = readFileSync(sessionFilePath, "utf8");
+	} catch {
+		return undefined;
+	}
+	let lastRaw: unknown;
+	for (const line of text.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed) as unknown;
+		} catch {
+			continue;
+		}
+		if (isAgentModeStateEntry(parsed)) {
+			lastRaw = (parsed as AgentModeStateEntry).data?.mode;
+		}
+	}
+	return parseSavedMode(lastRaw);
+}
+
+/** `session_start` payload (Pi extensions API). */
+interface SessionStartEvent {
+	reason?: string;
+	previousSessionFile?: string;
+}
+
 export default function agentModeExtension(pi: ExtensionAPI): void {
 	/** `null` = extension inactive (vanilla pi) until user runs `/agent-mode`. */
 	let currentMode: AgentMode | null = null;
@@ -237,12 +290,19 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 	}
 
 	// Run before resources_discover so restored mode is visible on startup/reload.
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("session_start", async (event, ctx) => {
 		currentMode = null;
-		const entries = ctx.sessionManager.getEntries();
-		const last = entries.filter(isAgentModeStateEntry).pop() as AgentModeStateEntry | undefined;
-		const saved = last?.data?.mode;
-		const restored = parseSavedMode(saved);
+		const ev = event as SessionStartEvent;
+		let restored = findLastSavedAgentMode(ctx.sessionManager.getEntries());
+		if (!restored) {
+			restored = findLastSavedAgentMode(ctx.sessionManager.getBranch());
+		}
+		if (!restored && ev.reason === "fork" && ev.previousSessionFile) {
+			restored = readLastAgentModeFromSessionFile(ev.previousSessionFile);
+			if (restored) {
+				persistAgentModeState(restored);
+			}
+		}
 		if (restored) {
 			currentMode = restored;
 		}
@@ -342,10 +402,4 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 	pi.on("session_shutdown", async (_event, ctx) => {
 		ctx.ui.setStatus("agent-mode", undefined);
 	});
-}
-
-function isAgentModeStateEntry(e: unknown): e is AgentModeStateEntry {
-	if (!e || typeof e !== "object") return false;
-	const o = e as AgentModeStateEntry;
-	return o.type === "custom" && o.customType === "agent-mode-state";
 }

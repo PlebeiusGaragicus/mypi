@@ -9,8 +9,8 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-/** Parent of `extensions/` — works for `pi install .`, git installs under ~/.pi, etc. */
-const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+/** Package root (parent of `extensions/`). */
+const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** Repo-relative dirs to prepend (pick-and-choose; add more skills as needed). */
 const SCRIPT_PATH_ALLOWLIST = [
