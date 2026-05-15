@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+
+import argparse
+import re
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+USER_AGENT = "pi-search-agent"
+ID_PATTERN = re.compile(r"^[A-Za-z0-9._/-]+(?:v[0-9]+)?$")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fetch arXiv HTML and convert it to plain text with pandoc.",
+        epilog=(
+            "Examples:\n"
+            "  arxiv-fetch.py 1706.03762 --max-chars 20000\n"
+            "  arxiv-fetch.py https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("paper", help="arXiv id or arxiv.org /abs/, /pdf/, or /html/ URL")
+    parser.add_argument(
+        "--max-chars",
+        type=parse_max_chars,
+        default=20000,
+        help="max text characters to print when not using --output (default: 20000)",
+    )
+    parser.add_argument("--output", help="write the full converted text to this path")
+    return parser.parse_args()
+
+
+def parse_max_chars(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("--max-chars must be an integer") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("--max-chars must be at least 1")
+    return parsed
+
+
+def normalize_id(value: str) -> str:
+    raw = value.strip()
+    if not raw:
+        raise ValueError("empty arXiv id")
+
+    if raw.lower().startswith("arxiv:"):
+        raw = raw.split(":", 1)[1].strip()
+
+    parsed = urllib.parse.urlparse(raw)
+    if parsed.scheme in {"http", "https"}:
+        path = parsed.path.strip("/")
+        for prefix in ("abs/", "pdf/", "html/"):
+            if path.startswith(prefix):
+                path = path[len(prefix) :]
+                break
+        raw = path
+
+    raw = raw.removesuffix(".pdf").strip("/")
+    if not raw:
+        raise ValueError("could not find an arXiv id in the input")
+    if not ID_PATTERN.match(raw):
+        raise ValueError(f"invalid arXiv id: {raw}")
+    return raw
+
+
+def fetch_html(arxiv_id: str) -> bytes:
+    url = f"https://arxiv.org/html/{arxiv_id}"
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace").strip()
+        if exc.code == 404:
+            raise RuntimeError(f"arXiv HTML is not available for {arxiv_id}") from exc
+        raise RuntimeError(f"arXiv HTML request failed (HTTP {exc.code}): {detail or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"arXiv HTML request failed: {exc.reason}") from exc
+
+
+def html_to_text(html: bytes) -> str:
+    if not shutil.which("pandoc"):
+        raise RuntimeError("pandoc is required to convert arXiv HTML to text")
+
+    process = subprocess.run(
+        ["pandoc", "-f", "html", "-t", "plain"],
+        input=html,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if process.returncode != 0:
+        error = process.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"pandoc failed: {error or f'exit code {process.returncode}'}")
+    return process.stdout.decode("utf-8", errors="replace")
+
+
+def print_text(text: str, max_chars: int) -> None:
+    if len(text) <= max_chars:
+        print(text, end="" if text.endswith("\n") else "\n")
+        return
+
+    print(text[:max_chars], end="")
+    print("\n...[truncated]")
+
+
+def main() -> int:
+    args = parse_args()
+
+    try:
+        arxiv_id = normalize_id(args.paper)
+        text = html_to_text(fetch_html(arxiv_id))
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(text, encoding="utf-8")
+            print(f"Wrote arXiv {arxiv_id} text to {output_path}")
+        else:
+            print_text(text, args.max_chars)
+        return 0
+    except (RuntimeError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

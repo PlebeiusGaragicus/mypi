@@ -1,3 +1,4 @@
+echo "************************************************"
 echo
 echo "Hello, World!"
 echo
@@ -9,3 +10,4 @@ echo "Thank you for your attention."
 echo
 echo "Goodbye."
 echo
+echo "************************************************"
