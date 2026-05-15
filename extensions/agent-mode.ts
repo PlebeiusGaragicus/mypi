@@ -1,6 +1,7 @@
 /**
- * Agent mode extension: /agent-mode switches among code, scout, web, write, and chat.
- * Default: **inactive** (vanilla pi tools, prompts, and discovery) until the user runs `/agent-mode`.
+ * Agent mode extension: /agent-mode switches among code, scout, web, write, and chat; **`pi` turns agent mode off**
+ * (same as inactive: vanilla tools, prompts, and discovery) and is offered in the selector and Ctrl+Shift+R cycle.
+ * Default: **inactive** until the user runs `/agent-mode`.
  * When a mode is active, per-profile resources under this package's `agents/<profile>/{skills,prompts,themes}/`
  * are registered via resources_discover (paths anchored to the install root); mode changes reload pi.
  *
@@ -20,24 +21,28 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 /** Parent of `extensions/` — works for `pi install .`, git installs under ~/.pi, etc. */
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-type AgentMode = "chat" | "scout" | "code" | "web" | "write";
+type AgentMode = "chat" | "scout" | "write" | "web" | "code";
 
-const MODES: AgentMode[] = ["code", "scout", "web", "write", "chat"];
+/** `pi` is only a UI/cycle slot meaning “deactivate agent mode”, not a stored profile. */
+type AgentModeSelector = AgentMode | "pi";
+
+const CYCLE_ORDER: AgentModeSelector[] = ["chat", "scout", "write", "web", "code", "pi"];
 
 const MODE_TOOLS: Record<AgentMode, string[]> = {
 	chat: [],
 	scout: ["ls", "find", "grep", "read"],
-	web: ["ls", "find", "grep", "read", "bash"],
 	write: ["ls", "find", "grep", "read", "write", "edit"],
+	web: ["ls", "find", "grep", "read", "bash"],
 	code: ["ls", "find", "grep", "read", "write", "edit", "bash"],
 };
 
-const MODE_LABELS: Record<AgentMode, string> = {
-	code: "Code",
-	scout: "Scout",
-	web: "Web",
-	write: "Write",
+const MODE_LABELS: Record<AgentModeSelector, string> = {
 	chat: "Chat",
+	scout: "Scout",
+	write: "Write",
+	web: "Web",
+	code: "Code",
+	pi: "Pi",
 };
 
 /**
@@ -45,7 +50,7 @@ const MODE_LABELS: Record<AgentMode, string> = {
  * `agents/<profile>/{skills,prompts,themes}/` (each may be a dir or symlink to `shared/...`).
  * Optional **`SYSTEM.md`** / **`APPEND_SYSTEM.md`** in the same folder: see file header above for merge rules.
  */
-const AGENT_RESOURCE_PROFILE: Record<AgentMode, string | null> = {
+const AGENT_RESOURCE_PROFILE: Record<AgentMode, string> = {
 	chat: "chat",
 	scout: "scout",
 	web: "web",
@@ -53,7 +58,7 @@ const AGENT_RESOURCE_PROFILE: Record<AgentMode, string | null> = {
 	code: "code",
 };
 
-type AgentProfile = NonNullable<(typeof AGENT_RESOURCE_PROFILE)[AgentMode]>;
+type AgentProfile = (typeof AGENT_RESOURCE_PROFILE)[AgentMode];
 
 function readSystemMd(profile: string): string | undefined {
 	const filePath = join(PACKAGE_ROOT, "agents", profile, "SYSTEM.md");
@@ -82,7 +87,6 @@ function profileThemesDir(profile: AgentProfile): string {
 function applyProfileThemeIfNeeded(ctx: ExtensionContext, mode: AgentMode): void {
 	if (!ctx.hasUI) return;
 	const profile = AGENT_RESOURCE_PROFILE[mode];
-	if (!profile) return;
 
 	const dir = profileThemesDir(profile);
 	if (!existsSync(dir)) return;
@@ -101,13 +105,11 @@ function applyProfileThemeIfNeeded(ctx: ExtensionContext, mode: AgentMode): void
 	}
 }
 
-/** Extra skill / prompt / theme roots for the active mode (pi merges with defaults). */
+/** Per-profile skill, prompt, and theme paths under `agents/<profile>/` for the active mode. */
 function agentResourcesDiscoverPaths(
 	mode: AgentMode,
 ): { skillPaths?: string[]; promptPaths?: string[]; themePaths?: string[] } {
 	const profile = AGENT_RESOURCE_PROFILE[mode];
-	if (!profile) return {};
-
 	const base = join(PACKAGE_ROOT, "agents", profile);
 	const skillsDir = join(base, "skills");
 	const promptsDir = join(base, "prompts");
@@ -120,16 +122,19 @@ function agentResourcesDiscoverPaths(
 	return out;
 }
 
-function parseModeArg(value: string): AgentMode | undefined {
+function parseModeArg(value: string): AgentModeSelector | undefined {
 	const v = value.trim();
 	if (v === "chat-only" || v === "chat") return "chat";
 	/** Legacy alias before mode was renamed from `editor` to `write`. */
 	if (v === "editor") return "write";
-	if (v === "scout" || v === "code" || v === "web" || v === "write") return v;
+	if (v === "scout" || v === "code" || v === "web" || v === "write" || v === "pi") return v;
 	return undefined;
 }
 
 function parseSavedMode(raw: unknown): AgentMode | undefined {
+	if (raw == null) return undefined;
+	/** Older sessions stored `"pi"` as a mode; that slot now means “off” — treat as inactive. */
+	if (raw === "pi") return undefined;
 	if (typeof raw !== "string") return undefined;
 	if (raw === "chat-only" || raw === "chat") return "chat";
 	/** Legacy session state used `editor` for the write profile. */
@@ -163,9 +168,8 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 	/** `null` = extension inactive (vanilla pi) until user runs `/agent-mode`. */
 	let currentMode: AgentMode | null = null;
 
-	function persistMode(): void {
-		if (currentMode === null) return;
-		pi.appendEntry("agent-mode-state", { mode: currentMode });
+	function persistAgentModeState(mode: AgentMode | null): void {
+		pi.appendEntry("agent-mode-state", { mode });
 	}
 
 	function updateStatus(ctx: ExtensionContext): void {
@@ -178,12 +182,26 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		ctx.ui.setStatus("agent-mode", ctx.ui.theme.fg(color, `mode: ${label}`));
 	}
 
+	function deactivateAgentMode(ctx: ExtensionContext): void {
+		currentMode = null;
+		pi.setActiveTools(pi.getAllTools().map((t) => t.name));
+		updateStatus(ctx);
+		persistAgentModeState(null);
+		ctx.ui.notify("Agent mode off (vanilla pi)");
+	}
+
 	function setMode(mode: AgentMode, ctx: ExtensionContext): void {
 		currentMode = mode;
 		pi.setActiveTools(MODE_TOOLS[mode]);
 		updateStatus(ctx);
-		persistMode();
+		persistAgentModeState(mode);
 		ctx.ui.notify(`Agent mode: ${MODE_LABELS[mode]}`);
+	}
+
+	function cycleToNextSlot(): AgentModeSelector {
+		const idx = currentMode === null ? -1 : CYCLE_ORDER.indexOf(currentMode);
+		const nextIdx = idx < 0 ? 0 : (idx + 1) % CYCLE_ORDER.length;
+		return CYCLE_ORDER[nextIdx]!;
 	}
 
 	// Run before resources_discover so restored mode is visible on startup/reload.
@@ -217,30 +235,66 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		return paths;
 	});
 
+	pi.registerShortcut("ctrl+option+r", {
+		description: "Cycle agent mode (chat → scout → write → web → code → off)",
+		handler: async (ctx) => {
+			if (!ctx.hasUI) return;
+			const next = cycleToNextSlot();
+			if (next === "pi") {
+				if (currentMode === null) {
+					ctx.ui.notify("Agent mode is already off.", "info");
+					return;
+				}
+				deactivateAgentMode(ctx);
+				ctx.ui.notify("Reloading so agent resources (skills, prompts, themes) update…", "info");
+				await ctx.reload?.();
+				return;
+			}
+			if (currentMode !== null && next === currentMode) {
+				ctx.ui.notify(`Already in ${MODE_LABELS[next]} mode.`, "info");
+				return;
+			}
+			setMode(next, ctx);
+			ctx.ui.notify("Reloading so agent resources (skills, prompts, themes) update…", "info");
+			await ctx.reload?.();
+		},
+	});
+
 	pi.registerCommand("agent-mode", {
 		description:
-			"Activate or switch agent mode (code | scout | web | write | chat); inactive until first use — no args opens a selector",
+			"Activate or switch agent mode (code | scout | web | write | chat); use pi to turn agent mode off — inactive until first use; no args opens a selector",
 		getArgumentCompletions: (prefix) => {
-			const matches = MODES.filter((m) => m.startsWith(prefix));
+			const matches = CYCLE_ORDER.filter((m) => m.startsWith(prefix));
 			if (matches.length === 0) return null;
 			return matches.map((m) => ({ value: m, label: `${m} (${MODE_LABELS[m]})` }));
 		},
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			const trimmed = args.trim();
-			let next: AgentMode | undefined;
+			let next: AgentModeSelector | undefined;
 			if (!trimmed) {
-				const items = MODES.map((m) => `${m} (${MODE_LABELS[m]})`);
+				const items = CYCLE_ORDER.map((m) => `${m} (${MODE_LABELS[m]})`);
 				const choice = await ctx.ui.select("Agent mode", items);
 				if (!choice) return;
-				next = MODES.find((m) => choice.startsWith(`${m} (`));
+				next = CYCLE_ORDER.find((m) => choice.startsWith(`${m} (`));
 				if (!next) return;
 			} else {
 				const parsed = parseModeArg(trimmed);
 				if (!parsed) {
-					ctx.ui.notify(`Unknown mode "${trimmed}". Use: ${MODES.join(", ")}`, "error");
+					ctx.ui.notify(`Unknown mode "${trimmed}". Use: ${CYCLE_ORDER.join(", ")}`, "error");
 					return;
 				}
 				next = parsed;
+			}
+
+			if (next === "pi") {
+				if (currentMode === null) {
+					ctx.ui.notify("Agent mode is already off.", "info");
+					return;
+				}
+				deactivateAgentMode(ctx);
+				ctx.ui.notify("Reloading so agent resources (skills, prompts, themes) update…", "info");
+				await ctx.reload();
+				return;
 			}
 
 			if (currentMode !== null && next === currentMode) {
@@ -259,9 +313,6 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 			return undefined;
 		}
 		const profile = AGENT_RESOURCE_PROFILE[currentMode];
-		if (!profile) {
-			return undefined;
-		}
 
 		const systemMd = readSystemMd(profile);
 		const appendMd = readAppendSystemMd(profile);
