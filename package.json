@@ -15,9 +15,10 @@
   },
   "pi": {
     "extensions": [
+      "extensions/bootstrap-path.ts",
       "extensions/agent-mode.ts",
       "extensions/mypi-branding/index.ts",
-      "extensions/tps-tracker.ts"
+      "extensions/tps.ts"
     ],
     "skills": [],
     "prompts": [],

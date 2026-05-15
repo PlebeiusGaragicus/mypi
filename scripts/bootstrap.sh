@@ -1,7 +1,12 @@
-# the idea is that we're ALWAYS in a pi session and these
-# commands plan our utilities in path... so they're "first class"
-# but only during a pi session ;)
+#!/usr/bin/env bash
+# Curated PATH for skill scripts (mirrors extensions/bootstrap-path.ts).
+# From repo root:  source scripts/bootstrap.sh
+# Pi loads extensions/bootstrap-path.ts automatically; this file is for
+# normal shells (e.g. dev outside pi).
 
-# alias todo="sh ./utilities/todo.sh"
-# vs
-# but ./bin on path and run a bootstrap script
+set -euo pipefail
+
+_mypi_root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
+export PATH="${_mypi_root}/shared/skills/todo/scripts${PATH:+:${PATH}}"
+
+unset _mypi_root
