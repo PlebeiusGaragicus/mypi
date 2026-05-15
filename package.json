@@ -14,7 +14,7 @@
     "postinstall": "bash scripts/hello-world.sh"
   },
   "pi": {
-    "extensions": ["extensions/agent-mode.ts", "extensions/rainbow-editor.ts"],
+    "extensions": ["extensions/agent-mode.ts", "extensions/mypi-branding/index.ts"],
     "skills": [],
     "prompts": [],
     "themes": []
