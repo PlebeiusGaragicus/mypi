@@ -1,11 +1,18 @@
 /**
- * Agent mode extension: /agent-mode switches among code, scout, web, editor, and chat.
+ * Agent mode extension: /agent-mode switches among code, scout, web, write, and chat.
  * Default: **inactive** (vanilla pi tools, prompts, and discovery) until the user runs `/agent-mode`.
  * When a mode is active, per-profile resources under this package's `agents/<profile>/{skills,prompts,themes}/`
  * are registered via resources_discover (paths anchored to the install root); mode changes reload pi.
+ *
+ * Per active profile under `agents/<profile>/`, optional markdown files control the system prompt (no
+ * mode-specific branching):
+ *
+ * - **`SYSTEM.md`** (non-empty): **replaces** Pi's default **`event.systemPrompt`** for that session turn.
+ * - **`APPEND_SYSTEM.md`** (non-empty): **appends** after the effective base. If both files exist, order is
+ *   `SYSTEM.md` then `APPEND_SYSTEM.md`. If neither exists, the extension does not modify the prompt.
  */
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -13,81 +20,54 @@ import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@e
 /** Parent of `extensions/` — works for `pi install .`, git installs under ~/.pi, etc. */
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-type AgentMode = "chat" | "scout" | "code" | "web" | "editor";
+type AgentMode = "chat" | "scout" | "code" | "web" | "write";
 
-const MODES: AgentMode[] = ["code", "scout", "web", "editor", "chat"];
+const MODES: AgentMode[] = ["code", "scout", "web", "write", "chat"];
 
 const MODE_TOOLS: Record<AgentMode, string[]> = {
-	code: ["ls", "find", "grep", "read", "write", "edit", "bash"],
+	chat: [],
 	scout: ["ls", "find", "grep", "read"],
 	web: ["ls", "find", "grep", "read", "bash"],
-	editor: ["ls", "find", "grep", "read", "write", "edit"],
-	chat: [],
+	write: ["ls", "find", "grep", "read", "write", "edit"],
+	code: ["ls", "find", "grep", "read", "write", "edit", "bash"],
 };
 
 const MODE_LABELS: Record<AgentMode, string> = {
 	code: "Code",
 	scout: "Scout",
 	web: "Web",
-	editor: "Editor",
+	write: "Write",
 	chat: "Chat",
 };
 
 /**
  * Subdirectory of `<package>/agents/` for this mode. Expected layout:
  * `agents/<profile>/{skills,prompts,themes}/` (each may be a dir or symlink to `shared/...`).
+ * Optional **`SYSTEM.md`** / **`APPEND_SYSTEM.md`** in the same folder: see file header above for merge rules.
  */
 const AGENT_RESOURCE_PROFILE: Record<AgentMode, string | null> = {
-	code: "coder",
+	chat: "chat",
 	scout: "scout",
 	web: "web",
-	editor: "editor",
-	chat: null,
+	write: "write",
+	code: "code",
 };
 
 type AgentProfile = NonNullable<(typeof AGENT_RESOURCE_PROFILE)[AgentMode]>;
 
-const CHAT_MODE_INSTRUCTIONS = `You are a helpful assistant in a quick Q&A mode.
+function readSystemMd(profile: string): string | undefined {
+	const filePath = join(PACKAGE_ROOT, "agents", profile, "SYSTEM.md");
+	if (!existsSync(filePath)) return undefined;
+	const text = readFileSync(filePath, "utf8").trim();
+	return text.length > 0 ? text : undefined;
+}
 
-You do not have any tools. Answer from general knowledge or ask the user for missing details.
-
-Do not claim to have read the user's files or repository unless the user pasted that content.`;
-
-const SCOUT_MODE_SUFFIX = `
-
----
-
-## Scout mode
-
-You are in scout (read-only discovery) mode.
-
-- Use only the tools you have been given (typically ls, find, grep, read). Do not assume write, edit, or bash exist.
-- Prefer ls, find, and grep over shell pipelines when exploring the tree.
-- Do not modify files or run shell commands unless a bash tool is actually available in your tool list.`;
-
-const WEB_MODE_SUFFIX = `
-
----
-
-## Web mode
-
-You are in web research mode (read-only on disk; bash allowed for HTTP and scripts).
-
-- Prefer the **arxiv-search** skill for arXiv queries and paper fetches: read its \`SKILL.md\` and run scripts from that skill directory.
-- Use **bash** for \`curl\`/HTTP checks and for invoking the skill's Python scripts when needed.
-- Do not use write or edit unless those tools appear in your available tool list.`;
-
-const EDITOR_MODE_SUFFIX = `
-
----
-
-## Editor mode
-
-You are in editor mode: file edits and reviews **without** a shell (\`bash\` is not available).
-
-- Use **read**, **grep**, **find**, and **ls** to inspect the codebase; use **write** and **edit** for changes.
-- Load the **humanizer** skill when the user wants clearer or more natural prose; follow its \`SKILL.md\` from the skill path shown in the prompt.
-- Do not suggest or attempt terminal commands—there is no bash tool in this mode.`;
+function readAppendSystemMd(profile: string): string | undefined {
+	const filePath = join(PACKAGE_ROOT, "agents", profile, "APPEND_SYSTEM.md");
+	if (!existsSync(filePath)) return undefined;
+	const text = readFileSync(filePath, "utf8").trim();
+	return text.length > 0 ? text : undefined;
+}
 
 /** `<package>/agents/<profile>/themes` for modes that ship per-profile themes. */
 function profileThemesDir(profile: AgentProfile): string {
@@ -121,16 +101,6 @@ function applyProfileThemeIfNeeded(ctx: ExtensionContext, mode: AgentMode): void
 	}
 }
 
-function appendDateAndCwd(cwd: string): string {
-	const now = new Date();
-	const y = now.getFullYear();
-	const m = String(now.getMonth() + 1).padStart(2, "0");
-	const d = String(now.getDate()).padStart(2, "0");
-	const date = `${y}-${m}-${d}`;
-	const promptCwd = cwd.replace(/\\/g, "/");
-	return `\nCurrent date: ${date}\nCurrent working directory: ${promptCwd}`;
-}
-
 /** Extra skill / prompt / theme roots for the active mode (pi merges with defaults). */
 function agentResourcesDiscoverPaths(
 	mode: AgentMode,
@@ -153,14 +123,18 @@ function agentResourcesDiscoverPaths(
 function parseModeArg(value: string): AgentMode | undefined {
 	const v = value.trim();
 	if (v === "chat-only" || v === "chat") return "chat";
-	if (v === "scout" || v === "code" || v === "web" || v === "editor") return v;
+	/** Legacy alias before mode was renamed from `editor` to `write`. */
+	if (v === "editor") return "write";
+	if (v === "scout" || v === "code" || v === "web" || v === "write") return v;
 	return undefined;
 }
 
 function parseSavedMode(raw: unknown): AgentMode | undefined {
 	if (typeof raw !== "string") return undefined;
 	if (raw === "chat-only" || raw === "chat") return "chat";
-	if (raw === "scout" || raw === "code" || raw === "web" || raw === "editor") return raw as AgentMode;
+	/** Legacy session state used `editor` for the write profile. */
+	if (raw === "editor") return "write";
+	if (raw === "scout" || raw === "code" || raw === "web" || raw === "write") return raw as AgentMode;
 	return undefined;
 }
 
@@ -178,7 +152,7 @@ function statusThemeColor(mode: AgentMode): "accent" | "warning" | "success" | "
 			return "warning";
 		case "web":
 			return "success";
-		case "editor":
+		case "write":
 			return "accent";
 		default:
 			return "muted";
@@ -245,7 +219,7 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("agent-mode", {
 		description:
-			"Activate or switch agent mode (code | scout | web | editor | chat); inactive until first use — no args opens a selector",
+			"Activate or switch agent mode (code | scout | web | write | chat); inactive until first use — no args opens a selector",
 		getArgumentCompletions: (prefix) => {
 			const matches = MODES.filter((m) => m.startsWith(prefix));
 			if (matches.length === 0) return null;
@@ -281,31 +255,29 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("before_agent_start", async (event) => {
-		const opts = event.systemPromptOptions;
 		if (currentMode === null) {
 			return undefined;
 		}
-		if (currentMode === "code") {
+		const profile = AGENT_RESOURCE_PROFILE[currentMode];
+		if (!profile) {
 			return undefined;
 		}
-		if (currentMode === "scout") {
-			return {
-				systemPrompt: `${event.systemPrompt}${SCOUT_MODE_SUFFIX}`,
-			};
+
+		const systemMd = readSystemMd(profile);
+		const appendMd = readAppendSystemMd(profile);
+
+		if (!systemMd && !appendMd) {
+			return undefined;
 		}
-		if (currentMode === "web") {
-			return {
-				systemPrompt: `${event.systemPrompt}${WEB_MODE_SUFFIX}`,
-			};
+
+		if (systemMd && appendMd) {
+			return { systemPrompt: `${systemMd}\n\n${appendMd}` };
 		}
-		if (currentMode === "editor") {
-			return {
-				systemPrompt: `${event.systemPrompt}${EDITOR_MODE_SUFFIX}`,
-			};
+		if (systemMd) {
+			return { systemPrompt: systemMd };
 		}
-		const append = opts.appendSystemPrompt ? `\n\n${opts.appendSystemPrompt}` : "";
 		return {
-			systemPrompt: `${CHAT_MODE_INSTRUCTIONS}${append}${appendDateAndCwd(opts.cwd)}`,
+			systemPrompt: `${event.systemPrompt}\n\n${appendMd}`,
 		};
 	});
 
