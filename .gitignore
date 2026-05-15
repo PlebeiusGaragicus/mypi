@@ -2,6 +2,9 @@
 node_modules
 package-lock.json
 
+auth.json
+models.json
+
 # reference-only repositories
 pi
 my-pi-setup

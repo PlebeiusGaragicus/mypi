@@ -50,7 +50,7 @@ If the guide is missing or insufficient for the request, also consult only the n
 - `$DOT_PI_DIR/agents/mas/prompts/deepresearch.md`
 - `$DOT_PI_DIR/agents/mas/prompts/pdf-ocr.md`
 
-Reading example files under `$DOT_PI_DIR/agents/mas/prompts/` is allowed for reference only. Do not use `writer` or `coder` to change those paths.
+Reading example files under `$DOT_PI_DIR/agents/mas/prompts/` is allowed for reference only. Do not use `write` or `code` to change those paths.
 
 Use these references to enforce capability boundaries, artifact handoffs, validation phases, stop conditions, and final user request handling.
 
@@ -75,7 +75,7 @@ Present a concise workflow spec to the user before writing files. Include:
 - create or modify mode
 - user input expected in the final user request section
 - phases and delegation plan
-- worker capability mapping (`ask`, `scout`, `writer`, `coder`, `web`)
+- worker capability mapping (`chat`, `scout`, `write`, `code`, `web`)
 - artifact conventions and ownership
 - validation and repair passes
 - stop conditions and final response shape
@@ -89,7 +89,7 @@ Stop if the user cancels. Do not write a workflow from an unapproved spec.
 
 Prepare the parent directory for the **approved target path** only.
 
-**If the target is project-local** (`.pi/prompts/<slug>.md`): confirm `.pi/prompts/` exists under the current working directory. If it does not exist, call `coder` once with a tightly scoped task equivalent to:
+**If the target is project-local** (`.pi/prompts/<slug>.md`): confirm `.pi/prompts/` exists under the current working directory. If it does not exist, call `code` once with a tightly scoped task equivalent to:
 
 ```text
 Create the project prompt directory `.pi/prompts/` in the current working directory if it does not already exist.
@@ -101,7 +101,7 @@ Constraints:
 Reply with the directory path and whether it was created or already existed.
 ```
 
-**If the target is overlay** (`$DOT_PI_OVERLAY/mas/prompts/<slug>.md`): confirm `$DOT_PI_OVERLAY/mas/prompts/` exists. It is usually created by install/relink. If it is missing, call `coder` once with a tightly scoped task equivalent to:
+**If the target is overlay** (`$DOT_PI_OVERLAY/mas/prompts/<slug>.md`): confirm `$DOT_PI_OVERLAY/mas/prompts/` exists. It is usually created by install/relink. If it is missing, call `code` once with a tightly scoped task equivalent to:
 
 ```text
 Create the directory `$DOT_PI_OVERLAY/mas/prompts/` if it does not already exist (use the actual expanded value of `$DOT_PI_OVERLAY` from the environment).
@@ -118,7 +118,7 @@ If directory creation fails, stop and report the blocker.
 
 ### 6. Write Or Revise Workflow
 
-Call `writer` once to create or revise the workflow file. The writer task must include the **approved absolute or workspace-relative target path** (expand `$DOT_PI_OVERLAY` for overlay so `writer` receives a concrete path). The writer task must include:
+Call `write` once to create or revise the workflow file. The write task must include the **approved absolute or workspace-relative target path** (expand `$DOT_PI_OVERLAY` for overlay so `write` receives a concrete path). The write task must include:
 
 ```text
 You are writing a `mas` workflow prompt template.
@@ -144,11 +144,11 @@ Existing workflow, if modifying:
 <paste relevant existing content or summary>
 ```
 
-If the workflow needs command execution or generated non-prose assets during writing, stop and explain why the requested workflow is outside `writer`'s scope instead of silently switching workers.
+If the workflow needs command execution or generated non-prose assets during writing, stop and explain why the requested workflow is outside `write`'s scope instead of silently switching workers.
 
 ### 7. Validate Written Workflow
 
-After `writer` returns, use your own `read` tool to inspect the **approved target path**.
+After `write` returns, use your own `read` tool to inspect the **approved target path**.
 
 Validate that it has:
 
@@ -162,9 +162,9 @@ Validate that it has:
 - `## User Request`
 - the dollar-at placeholder appearing only in the final user request block
 
-If validation fails, run one repair pass with `writer`, then read the file again. If it still fails, stop with the file path and remaining issues.
+If validation fails, run one repair pass with `write`, then read the file again. If it still fails, stop with the file path and remaining issues.
 
-If you use `ask` with persona `judge` for an additional semantic check, pass the workflow excerpt and checklist inline. Never ask `ask` to inspect the file path.
+If you use `chat` with persona `judge` for an additional semantic check, pass the workflow excerpt and checklist inline. Never ask `chat` to inspect the file path.
 
 ## Artifact Conventions
 

@@ -1,30 +1,28 @@
 /**
- * Top-Level Agent Orchestrator
- *
- * Experimental MAS extension that exposes a fixed set of top-level capability
- * agents as workers through the `subagent` tool.
+ * Workflow orchestrator — registers the `subagent` tool and worker traces for MAS workflow mode.
+ * Worker names match agent-mode profiles; each resolves to `agents/<name>/` under the package root.
  */
 
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import { type ExtensionAPI, getAgentDir, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { agentOverlayDir, dotPiOverlay } from "../lib/dotpi-paths.js";
 
-const CORE_AGENT_NAMES = ["ask", "scout", "writer", "coder", "web"] as const;
+const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+
+/** Subagent `agent` field values — same ids as `/agent-mode` profiles (`agents/<name>/`). */
+const CORE_AGENT_NAMES = ["chat", "scout", "write", "code", "web"] as const;
+type CoreAgentName = (typeof CORE_AGENT_NAMES)[number];
+
 const MAX_PARALLEL_TASKS = 10;
 
-/** Max concurrent child `pi` workers hitting lmstudio/ollama (raise when local hardware allows). */
-const LOCAL_INFERENCE_PARALLEL_LIMIT = 1;
-
-const LOCAL_THROTTLED_PROVIDER_IDS = new Set(["lmstudio", "ollama"]);
-
-type CoreAgentName = (typeof CORE_AGENT_NAMES)[number];
 type InvocationMode = "single" | "parallel" | "chain";
 
 interface CapabilityAgent {
@@ -110,19 +108,11 @@ function makeRunId(parentAgent: string): string {
 	return `${timestamp}--${parentAgent}-${suffix}`;
 }
 
-/** Matches `dispatch-agent` `_cwd_to_session_dir` encoding for overlay session dirs. */
 function encodeCwdSessionDirKey(cwd: string): string {
 	const normalized = path.normalize(cwd);
 	const noLeading = normalized.replace(/^[/\\]+/, "");
 	const encoded = noLeading.replace(/[/\\]/g, "-");
 	return `--${encoded}--`;
-}
-
-function findDotPiRoot(): string {
-	if (!process.env.DOT_PI_DIR) {
-		throw new Error("DOT_PI_DIR is not set; run this extension through dispatch-agent.");
-	}
-	return process.env.DOT_PI_DIR;
 }
 
 function readCapability(agentDir: string): string | undefined {
@@ -136,9 +126,8 @@ function readCapability(agentDir: string): string | undefined {
 }
 
 function loadCapabilityAgents(): CapabilityAgent[] {
-	const root = findDotPiRoot();
 	return CORE_AGENT_NAMES.map((name) => {
-		const dir = path.join(root, "agents", name);
+		const dir = path.join(PACKAGE_ROOT, "agents", name);
 		return {
 			name,
 			dir,
@@ -185,134 +174,6 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 	return { command: "pi", args };
 }
 
-function expandEnvVars(value: string, env: Record<string, string>): string {
-	return value.replace(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g, (_match, name: string) => env[name] ?? "");
-}
-
-/** Read worker `pi-args` the same way dispatch does: lines, optional env expansion, no model-defaults / env.model. */
-function readPiArgs(agentDir: string): string[] {
-	const piArgsPath = path.join(agentDir, "pi-args");
-	if (!fs.existsSync(piArgsPath)) return [];
-
-	const args: string[] = [];
-	try {
-		const env = { ...process.env } as Record<string, string>;
-		const lines = fs.readFileSync(piArgsPath, "utf-8").split(/\r?\n/);
-		for (const rawLine of lines) {
-			const trimmed = rawLine.trim();
-			const line = expandEnvVars(trimmed, env);
-			if (!line || line.startsWith("#")) continue;
-			args.push(...line.split(/\s+/).filter(Boolean));
-		}
-		return args;
-	} catch {
-		return [];
-	}
-}
-
-function getModelArg(piArgs: string[]): string | null {
-	for (let i = 0; i < piArgs.length; i++) {
-		if (piArgs[i] === "--model") {
-			const value = piArgs[i + 1];
-			if (value && !value.startsWith("--")) return value;
-		}
-	}
-	return null;
-}
-
-/** Provider id from `provider/model`, or the full string when there is no `/` (bare provider id). */
-function getProviderFromModel(model: string | null): string | null {
-	if (!model) return null;
-	const x = model.trim();
-	if (!x) return null;
-	const i = x.indexOf("/");
-	if (i > 0) return x.slice(0, i).trim() || null;
-	return x;
-}
-
-function readDefaultProvider(): string | null {
-	let root: string;
-	try {
-		root = findDotPiRoot();
-	} catch {
-		return null;
-	}
-	const settingsPath = path.join(root, "shared", "settings.json");
-	try {
-		if (!fs.existsSync(settingsPath)) return null;
-		const raw = fs.readFileSync(settingsPath, "utf-8");
-		const data = JSON.parse(raw) as { defaultProvider?: unknown };
-		const p = data.defaultProvider;
-		if (typeof p !== "string") return null;
-		const t = p.trim();
-		return t || null;
-	} catch {
-		return null;
-	}
-}
-
-function resolveWorkerProvider(piArgs: string[]): string | null {
-	const model = getModelArg(piArgs);
-	if (model) return getProviderFromModel(model);
-	return readDefaultProvider();
-}
-
-function isThrottledLocalProvider(provider: string | null): boolean {
-	if (!provider) return false;
-	return LOCAL_THROTTLED_PROVIDER_IDS.has(provider.trim().toLowerCase());
-}
-
-interface ResourcePoolState {
-	active: number;
-	queue: Array<() => void>;
-}
-
-const resourcePoolStates = new Map<string, ResourcePoolState>();
-
-function getResourcePoolState(pool: string): ResourcePoolState {
-	let state = resourcePoolStates.get(pool);
-	if (!state) {
-		state = { active: 0, queue: [] };
-		resourcePoolStates.set(pool, state);
-	}
-	return state;
-}
-
-async function acquireResourcePoolSlot(pool: string, limit: number): Promise<() => void> {
-	const state = getResourcePoolState(pool);
-	const cap = Math.max(1, limit);
-
-	if (state.active >= cap) {
-		await new Promise<void>((resolve) => {
-			state.queue.push(() => {
-				state.active++;
-				resolve();
-			});
-		});
-	} else {
-		state.active++;
-	}
-
-	let released = false;
-	return () => {
-		if (released) return;
-		released = true;
-		state.active = Math.max(0, state.active - 1);
-		while (state.active < cap && state.queue.length > 0) {
-			const next = state.queue.shift();
-			if (!next) break;
-			next();
-		}
-	};
-}
-
-async function acquireLocalInferenceSlot(piArgs: string[]): Promise<() => void> {
-	if (!isThrottledLocalProvider(resolveWorkerProvider(piArgs))) {
-		return () => {};
-	}
-	return acquireResourcePoolSlot("localInference", LOCAL_INFERENCE_PARALLEL_LIMIT);
-}
-
 function buildWorkerTask(task: string): string {
 	return [
 		"You are running as a worker for a parent MAS orchestrator.",
@@ -334,26 +195,66 @@ function isDirectory(p: string): boolean {
 	}
 }
 
+const PI_AGENT_CONFIG_NAMES = ["models.json", "auth.json"] as const;
+
 /**
- * Session `custom` entry (`pi.appendEntry`) — not sent to the LLM — linking this orchestrator
- * session file to the active `subagent-traces/<run-id>/` bundle for this process.
+ * Symlink `~/.pi/agent/{models,auth}.json` into `agentDir` so child `pi` (with `PI_CODING_AGENT_DIR`) loads the
+ * same provider config as the interactive CLI. Unix only. Does not replace an existing regular file in the repo.
  */
-const DOTPI_SUBAGENT_TRACES_CUSTOM_TYPE = "dotpi.subagent-traces";
+function ensurePiAgentConfigSymlinks(agentDir: string): string {
+	const globalDir = path.join(homedir(), ".pi", "agent");
+	let warnings = "";
+
+	for (const name of PI_AGENT_CONFIG_NAMES) {
+		const src = path.resolve(path.join(globalDir, name));
+		const dst = path.join(agentDir, name);
+		try {
+			if (!fs.existsSync(src)) continue;
+
+			if (!fs.existsSync(dst)) {
+				fs.symlinkSync(src, dst);
+				continue;
+			}
+
+			const st = fs.lstatSync(dst);
+			if (st.isSymbolicLink()) {
+				const linkTarget = path.resolve(agentDir, fs.readlinkSync(dst));
+				if (path.resolve(linkTarget) === path.resolve(src)) continue;
+				fs.unlinkSync(dst);
+				fs.symlinkSync(src, dst);
+				continue;
+			}
+
+			/* Existing file or directory — leave it (do not clobber). */
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e);
+			warnings += `[${name}] symlink: ${msg}\n`;
+		}
+	}
+
+	return warnings;
+}
+
+/** Session custom entry — links orchestrator JSONL to this trace bundle (absolute `traceDir`). */
+const SUBAGENT_TRACES_CUSTOM_TYPE = "mypi.subagent-traces";
 
 class TraceManager {
 	private manifest: TraceManifest | null = null;
 	private writeQueue: Promise<void> = Promise.resolve();
 	private nextIndex = 1;
 	private sessionTracePointerAppended = false;
+	private traceDirAbsolute: string | null = null;
 
 	constructor(
-		private readonly parentAgentDir: string,
-		private readonly parentAgentName: string,
 		readonly runId: string,
+		private readonly parentAgentLabel: string,
 	) {}
 
 	get traceDir(): string {
-		return path.join(agentOverlayDir(this.parentAgentDir), "subagent-traces", this.runId);
+		if (!this.traceDirAbsolute) {
+			throw new Error("TraceManager.ensure(cwd) must run before traceDir is read");
+		}
+		return this.traceDirAbsolute;
 	}
 
 	private get manifestPath(): string {
@@ -361,10 +262,13 @@ class TraceManager {
 	}
 
 	ensure(cwd: string): void {
+		if (!this.traceDirAbsolute) {
+			this.traceDirAbsolute = path.join(cwd, ".pi", "subagent-traces", this.runId);
+		}
 		fs.mkdirSync(this.traceDir, { recursive: true });
 		if (!this.manifest) {
 			this.manifest = {
-				parentAgent: this.parentAgentName,
+				parentAgent: this.parentAgentLabel,
 				traceRunId: this.runId,
 				cwd,
 				createdAt: new Date().toISOString(),
@@ -374,21 +278,21 @@ class TraceManager {
 		}
 	}
 
-	/** Once per trace run: persist overlay-relative trace dir into the orchestrator session JSONL (CustomEntry). */
 	appendSessionTracePointerIfNeeded(pi: ExtensionAPI, cwd: string): void {
 		if (this.sessionTracePointerAppended) return;
 		this.sessionTracePointerAppended = true;
-		const traceDirRelativeToDotPiOverlay = path.relative(dotPiOverlay(), this.traceDir).replace(/\\/g, "/");
+		const traceDir = this.traceDirAbsolute;
+		if (!traceDir) return;
 		try {
-			pi.appendEntry(DOTPI_SUBAGENT_TRACES_CUSTOM_TYPE, {
-				v: 1,
+			pi.appendEntry(SUBAGENT_TRACES_CUSTOM_TYPE, {
+				v: 2,
 				traceRunId: this.runId,
-				traceDirRelativeToDotPiOverlay,
+				traceDir,
 				cwdSessionKey: encodeCwdSessionDirKey(cwd),
-				parentAgent: this.parentAgentName,
+				parentAgent: this.parentAgentLabel,
 			});
 		} catch {
-			/* best-effort; mas must stay up if appendEntry fails */
+			/* best-effort */
 		}
 	}
 
@@ -426,7 +330,7 @@ class TraceManager {
 	private write(): Promise<void> {
 		this.writeQueue = this.writeQueue
 			.then(async () => {
-				if (!this.manifest) return;
+				if (!this.manifest || !this.traceDirAbsolute) return;
 				await fs.promises.mkdir(this.traceDir, { recursive: true });
 				await fs.promises.writeFile(this.manifestPath, `${JSON.stringify(this.manifest, null, 2)}\n`);
 			})
@@ -476,11 +380,10 @@ async function runWorker(
 		return result;
 	}
 
-	const piArgs = readPiArgs(agent.dir);
-	const release = await acquireLocalInferenceSlot(piArgs);
+	const linkWarnings = ensurePiAgentConfigSymlinks(agent.dir);
+	if (linkWarnings) baseResult.stderr += linkWarnings;
 
 	const args: string[] = ["--mode", "json", "--session-dir", traceManager.traceDir];
-	args.push(...piArgs);
 	if (persona) args.push("--persona", persona);
 	args.push("-p", buildWorkerTask(task));
 
@@ -506,15 +409,15 @@ async function runWorker(
 
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
-				let event: any;
+				let event: { type?: string; message?: Message };
 				try {
-					event = JSON.parse(line);
+					event = JSON.parse(line) as { type?: string; message?: Message };
 				} catch {
 					return;
 				}
 
 				if (event.type === "message_end" && event.message) {
-					const msg = event.message as Message;
+					const msg = event.message;
 					currentResult.messages.push(msg);
 
 					if (msg.role === "assistant") {
@@ -536,7 +439,7 @@ async function runWorker(
 				}
 
 				if (event.type === "tool_result_end" && event.message) {
-					currentResult.messages.push(event.message as Message);
+					currentResult.messages.push(event.message);
 					emitUpdate();
 				}
 			};
@@ -581,7 +484,6 @@ async function runWorker(
 		}
 		return currentResult;
 	} finally {
-		release();
 		currentResult.endedAt = new Date().toISOString();
 		traceManager.finishWorker(manifestEntry, currentResult);
 		await traceManager.flush();
@@ -619,12 +521,10 @@ function compactResultLine(result: WorkerResult): string {
 	return `[${result.agent}${persona}] ${isErrorResult(result) ? "failed" : "completed"}: ${preview || result.stderr || "(no output)"}`;
 }
 
-export default function topLevelAgentOrchestrator(pi: ExtensionAPI): void {
+export default function workflowOrchestrator(pi: ExtensionAPI): void {
 	if (process.env.PI_IS_SUBAGENT === "1") return;
 
-	const parentAgentDir = getAgentDir();
-	const parentAgentName = path.basename(parentAgentDir);
-	const traceManager = new TraceManager(parentAgentDir, parentAgentName, makeRunId(parentAgentName));
+	const traceManager = new TraceManager(makeRunId("workflow"), "workflow");
 
 	pi.on("before_agent_start", async (event) => {
 		const catalog = buildCapabilityCatalog(loadCapabilityAgents());
@@ -632,22 +532,15 @@ export default function topLevelAgentOrchestrator(pi: ExtensionAPI): void {
 		return { systemPrompt: `${event.systemPrompt}\n\n${catalog}` };
 	});
 
-	pi.registerCommand("subagents", {
-		description: "Show top-level capability agents available to this MAS",
-		handler: async (_args, ctx) => {
-			if (!ctx.hasUI) return;
-			const catalog = buildCapabilityCatalog(loadCapabilityAgents());
-			ctx.ui.notify(catalog ? `Top-Level Capability Agents\n\n${catalog}` : "No capability agents are available.", "info");
-		},
-	});
+	const agentList = CORE_AGENT_NAMES.join(", ");
 
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
 		description: [
-			"Delegate bounded work to hard-coded top-level capability agents.",
+			"Delegate bounded work to top-level capability agents (mypi package profiles).",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
-			"Allowed agents: ask, scout, writer, coder, web.",
+			`Allowed agent names (same as /agent-mode profiles): ${agentList}.`,
 		].join(" "),
 		parameters: SubagentParams,
 
@@ -673,7 +566,7 @@ export default function topLevelAgentOrchestrator(pi: ExtensionAPI): void {
 					content: [
 						{
 							type: "text",
-							text: `Invalid parameters. Provide exactly one mode. Available agents: ${CORE_AGENT_NAMES.join(", ")}`,
+							text: `Invalid parameters. Provide exactly one mode. Available agents: ${agentList}`,
 						},
 					],
 					details: makeDetails("single")([]),
@@ -811,7 +704,7 @@ export default function topLevelAgentOrchestrator(pi: ExtensionAPI): void {
 			}
 
 			return {
-				content: [{ type: "text", text: `Invalid parameters. Available agents: ${CORE_AGENT_NAMES.join(", ")}` }],
+				content: [{ type: "text", text: `Invalid parameters. Available agents: ${agentList}` }],
 				details: makeDetails("single")([]),
 				isError: true,
 			};
@@ -820,8 +713,7 @@ export default function topLevelAgentOrchestrator(pi: ExtensionAPI): void {
 		renderCall(args, theme, _context) {
 			if (args.chain && args.chain.length > 0) {
 				let text =
-					theme.fg("toolTitle", theme.bold("subagent ")) +
-					theme.fg("accent", `chain (${args.chain.length} steps)`);
+					theme.fg("toolTitle", theme.bold("subagent ")) + theme.fg("accent", `chain (${args.chain.length} steps)`);
 				for (const [index, step] of args.chain.slice(0, 3).entries()) {
 					const persona = step.persona ? `/${step.persona}` : "";
 					const preview = step.task.replace(/\{previous\}/g, "").trim();
@@ -832,8 +724,7 @@ export default function topLevelAgentOrchestrator(pi: ExtensionAPI): void {
 			}
 			if (args.tasks && args.tasks.length > 0) {
 				let text =
-					theme.fg("toolTitle", theme.bold("subagent ")) +
-					theme.fg("accent", `parallel (${args.tasks.length} tasks)`);
+					theme.fg("toolTitle", theme.bold("subagent ")) + theme.fg("accent", `parallel (${args.tasks.length} tasks)`);
 				for (const task of args.tasks.slice(0, 3)) {
 					const persona = task.persona ? `/${task.persona}` : "";
 					text += `\n  ${theme.fg("accent", `${task.agent}${persona}`)} ${theme.fg("dim", String(task.task ?? "").slice(0, 48))}`;

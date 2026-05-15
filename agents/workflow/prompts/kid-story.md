@@ -1,6 +1,6 @@
 # Kid Story — toy parallel brainstorm → narrator
 
-Demonstration workflow: three **`writer`** brainstorm passes run in parallel into **`ideas/`** markdown files, then one **`writer`** narrator reads them and writes a single short children's story to **`story.md`**. Intended as a small MAS handoff demo, not a production editorial pipeline.
+Demonstration workflow: three **`write`** brainstorm passes run in parallel into **`ideas/`** markdown files, then one **`write`** narrator reads them and writes a single short children's story to **`story.md`**. Intended as a small MAS handoff demo, not a production editorial pipeline.
 
 ## Goal
 
@@ -25,9 +25,9 @@ Follow these phases in order. Do not skip validation unless the workflow stops w
 - After workers have been invoked, do not use **`questionnaire`** except where this workflow explicitly requires a user decision.
 - Ensure workers will not collide on paths: each parallel task writes **exactly one** of the three files listed in §2.
 
-### 2. Parallel brainstorm (`writer` × 3)
+### 2. Parallel brainstorm (`write` × 3)
 
-Call **`subagent`** once in **parallel** mode with **`tasks[]`** length **3**, each entry **`agent: writer`**.
+Call **`subagent`** once in **parallel** mode with **`tasks[]`** length **3**, each entry **`agent: write`**.
 
 Embed the user's **settings** and **idea seed** verbatim inside **each** of the three task strings (do not rely on workers reading this template).
 
@@ -44,11 +44,11 @@ Each parallel task must require:
 - Save **only** that worker's file; do not write **`story.md`** in this phase.
 - Return a short confirmation with the path written.
 
-If one parallel **`writer`** fails, continue if at least **two** brainstorm files exist; otherwise stop and report which paths are missing. Note partial coverage in the final response.
+If one parallel **`write`** fails, continue if at least **two** brainstorm files exist; otherwise stop and report which paths are missing. Note partial coverage in the final response.
 
-### 3. Narrator pass (`writer` × 1)
+### 3. Narrator pass (`write` × 1)
 
-Call **`writer`** once as narrator.
+Call **`write`** once as narrator.
 
 The narrator task must:
 
@@ -67,9 +67,9 @@ The narrator task must:
 Use your own **`read`** tool on **`story.md`**. Approximate a word count on the narrative.
 
 - If the body is **≤ 520 words**, treat as acceptable (small counting slack).
-- If clearly **over 520 words**, call **`writer`** once more with a tight trim task: read **`story.md`**, rewrite in place preserving plot and voice, **≤ 500 words**, same path.
+- If clearly **over 520 words**, call **`write`** once more with a tight trim task: read **`story.md`**, rewrite in place preserving plot and voice, **≤ 500 words**, same path.
 
-Do not ask **`ask`** to read **`story.md`** from a path alone. If you use **`ask`** (e.g. persona **`judge`**) for a child-appropriateness sniff test, paste an **inline excerpt** only (for example opening plus closing paragraphs), not path-only instructions.
+Do not ask **`chat`** to read **`story.md`** from a path alone. If you use **`chat`** (e.g. persona **`judge`**) for a child-appropriateness sniff test, paste an **inline excerpt** only (for example opening plus closing paragraphs), not path-only instructions.
 
 ## Artifact Conventions
 
@@ -79,8 +79,8 @@ Do not ask **`ask`** to read **`story.md`** from a path alone. If you use **`ask
 ## Stop Conditions
 
 - Missing idea seed after **`questionnaire`**.
-- Fewer than two brainstorm files exist after the parallel phase and a single targeted **`writer`** retry cannot restore coverage.
-- **`writer`** cannot produce **`story.md`** or trim pass fails twice — stop with paths and blockers.
+- Fewer than two brainstorm files exist after the parallel phase and a single targeted **`write`** retry cannot restore coverage.
+- **`write`** cannot produce **`story.md`** or trim pass fails twice — stop with paths and blockers.
 
 ## Final Response
 

@@ -60,9 +60,9 @@ Continue the workflow if one collector fails, but note failed URLs. Stop only if
 
 ### 4. Draft Report
 
-Call `writer` once to draft the report.
+Call `write` once to draft the report.
 
-The writer task must ask it to:
+The write task must ask it to:
 
 - Read all `sources/*.md` files.
 - Write the report to `reports/report.md` unless the user requested another path.
@@ -73,7 +73,7 @@ The writer task must ask it to:
 
 ### 5. Editorial Review
 
-Call `writer` a second time as an editor.
+Call `write` a second time as an editor.
 
 The editor task must ask it to:
 
@@ -87,11 +87,11 @@ The editor task must ask it to:
 
 ### 6. Grounded Validation
 
-Before final reply, use your own read tool to inspect `reports/report.md`. Do not ask `ask` to read file paths; `ask` has no tools.
+Before final reply, use your own read tool to inspect `reports/report.md`. Do not ask `chat` to read file paths; `chat` has no tools.
 
-If you use `ask` with persona `judge`, pass it the actual report excerpt, source list, or checklist text inline. The task must not contain path-only instructions such as "evaluate `reports/report.md`." Use `ask` only for semantic judgement over text you provide.
+If you use `chat` with persona `judge`, pass it the actual report excerpt, source list, or checklist text inline. The task must not contain path-only instructions such as "evaluate `reports/report.md`." Use `chat` only for semantic judgement over text you provide.
 
-If validation fails, run one repair pass with `writer` or `web` depending on the failure reason, then inspect the report again. If it still fails, stop and report the blocker with partial artifact paths.
+If validation fails, run one repair pass with `write` or `web` depending on the failure reason, then inspect the report again. If it still fails, stop and report the blocker with partial artifact paths.
 
 ## Artifact Conventions
 

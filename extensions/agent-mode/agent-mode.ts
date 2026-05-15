@@ -1,10 +1,15 @@
 /**
- * Agent mode extension: /agent-mode switches among code, scout, web, write, and chat; **`pi` turns agent mode off**
- * (same as inactive: vanilla tools, prompts, and discovery) and is offered in the selector.
+ * Agent mode extension: /agent-mode switches among code, scout, web, write, chat, and **workflow**; **`pi` turns agent mode off**
+ * (same as inactive: vanilla tools, prompts, and discovery). The no-arg selector lists `workflow` before `pi`.
  * Default: **inactive** until the user runs `/agent-mode`.
  * When a mode is active, per-profile resources under this package's `agents/<profile>/{skills,prompts,themes}/`
  * are registered via `resources_discover` (paths anchored to the install root). Mode changes call `ctx.reload()` so
  * skills, prompts, themes, and tools stay in sync.
+ *
+ * **Workflow mode** expects a session with no prior user messages (deterministic MAS runs). Entering workflow when
+ * the branch already has user messages opens a confirmation; Pi cannot always start `/new` programmatically — the user
+ * may be asked to run `/new` then `/agent-mode workflow` again. On `session_start`, a saved `workflow` mode is
+ * cleared to vanilla if user messages are already present on the branch.
  *
  * **`/fork` / `/clone`:** Pi emits `session_start` with `reason: "fork"` and `previousSessionFile` (parent `.jsonl`).
  * Custom `agent-mode-state` lines are often missing on the forked leaf; we re-read the last such line from the parent
@@ -21,17 +26,23 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+	ExtensionContext,
+	SessionEntry,
+} from "@earendil-works/pi-coding-agent";
+import { createChatPersonaController } from "./chat-personas";
 
 /** Package root (parent of `extensions/`). */
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-type AgentMode = "chat" | "scout" | "write" | "web" | "code";
+type AgentMode = "chat" | "scout" | "write" | "web" | "code" | "workflow";
 
 /** `pi` is only a selector slot meaning “deactivate agent mode”, not a stored profile. */
 type AgentModeSelector = AgentMode | "pi";
 
-const CYCLE_ORDER: AgentModeSelector[] = ["chat", "scout", "write", "web", "code", "pi"];
+const CYCLE_ORDER: AgentModeSelector[] = ["chat", "scout", "write", "web", "code", "workflow", "pi"];
 
 const MODE_TOOLS: Record<AgentMode, string[]> = {
 	chat: [],
@@ -39,6 +50,7 @@ const MODE_TOOLS: Record<AgentMode, string[]> = {
 	write: ["ls", "find", "grep", "read", "write", "edit"],
 	web: ["ls", "find", "grep", "read", "bash"],
 	code: ["ls", "find", "grep", "read", "write", "edit", "bash"],
+	workflow: ["ls", "find", "grep", "read", "write", "edit", "bash", "subagent"],
 };
 
 /** Right-hand summary on each `/agent-mode` picker row only — status bar uses the mode id (e.g. `write`). */
@@ -48,6 +60,7 @@ const MODE_MENU_DESCRIPTIONS: Record<AgentModeSelector, string> = {
 	write: "read and edit files",
 	web: "read files and run shell commands",
 	code: "all tools available",
+	workflow: "multi-agent workflow orchestrator",
 	pi: "agent mode off - vanilla Pi",
 };
 
@@ -58,12 +71,13 @@ const MODE_SELECT_MARK: Record<AgentModeSelector, string> = {
 	write: "▲",
 	web: "◆",
 	code: "■",
+	workflow: "◎",
 	pi: "·",
 };
 
-const MODE_ID_COL = 6;
+const MODE_ID_COL = 10;
 /** Wide enough for `MODE_TOOLS.code` joined with ", " (alignment before the second ` — `). */
-const MODE_TOOLS_COL = 40;
+const MODE_TOOLS_COL = 56;
 
 function summarizeToolsForSelect(m: AgentModeSelector): string {
 	if (m === "pi") return "—";
@@ -99,9 +113,35 @@ const AGENT_RESOURCE_PROFILE: Record<AgentMode, string> = {
 	web: "web",
 	write: "write",
 	code: "code",
+	workflow: "workflow",
 };
 
 type AgentProfile = (typeof AGENT_RESOURCE_PROFILE)[AgentMode];
+
+function textFromContent(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return "";
+	const textParts: string[] = [];
+	for (const part of content) {
+		if (!part || typeof part !== "object") continue;
+		const maybeText = part as { type?: unknown; text?: unknown };
+		if (maybeText.type === "text" && typeof maybeText.text === "string") {
+			textParts.push(maybeText.text);
+		}
+	}
+	return textParts.join("");
+}
+
+/** True if the active branch has at least one persisted user message with non-empty text. */
+function hasUserMessageOnBranch(ctx: ExtensionContext): boolean {
+	for (const entry of ctx.sessionManager.getBranch() as SessionEntry[]) {
+		if (entry.type !== "message") continue;
+		const message = entry.message as { role?: unknown; content?: unknown };
+		if (message.role !== "user") continue;
+		if (textFromContent(message.content).trim()) return true;
+	}
+	return false;
+}
 
 function readSystemMd(profile: string): string | undefined {
 	const filePath = join(PACKAGE_ROOT, "agents", profile, "SYSTEM.md");
@@ -170,7 +210,7 @@ function parseModeArg(value: string): AgentModeSelector | undefined {
 	if (v === "chat-only" || v === "chat") return "chat";
 	/** Legacy alias before mode was renamed from `editor` to `write`. */
 	if (v === "editor") return "write";
-	if (v === "scout" || v === "code" || v === "web" || v === "write" || v === "pi") return v;
+	if (v === "scout" || v === "code" || v === "web" || v === "write" || v === "workflow" || v === "pi") return v;
 	return undefined;
 }
 
@@ -182,7 +222,7 @@ function parseSavedMode(raw: unknown): AgentMode | undefined {
 	if (raw === "chat-only" || raw === "chat") return "chat";
 	/** Legacy session state used `editor` for the write profile. */
 	if (raw === "editor") return "write";
-	if (raw === "scout" || raw === "code" || raw === "web" || raw === "write") return raw as AgentMode;
+	if (raw === "scout" || raw === "code" || raw === "web" || raw === "write" || raw === "workflow") return raw as AgentMode;
 	return undefined;
 }
 
@@ -202,6 +242,8 @@ function statusThemeColor(mode: AgentMode): "accent" | "warning" | "success" | "
 			return "success";
 		case "write":
 			return "accent";
+		case "workflow":
+			return "warning";
 		default:
 			return "muted";
 	}
@@ -260,6 +302,14 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 	/** `null` = extension inactive (vanilla pi) until user runs `/agent-mode`. */
 	let currentMode: AgentMode | null = null;
 
+	const chatPersonas = createChatPersonaController({
+		pi,
+		packageRoot: PACKAGE_ROOT,
+		getCurrentMode: () => currentMode,
+		getChatBaselineTools: () => MODE_TOOLS.chat,
+	});
+	chatPersonas?.registerPersonaCommand();
+
 	function persistAgentModeState(mode: AgentMode | null): void {
 		pi.appendEntry("agent-mode-state", { mode });
 	}
@@ -277,6 +327,7 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		currentMode = null;
 		pi.setActiveTools(pi.getAllTools().map((t) => t.name));
 		updateStatus(ctx);
+		chatPersonas?.updateStatus(ctx);
 		persistAgentModeState(null);
 		ctx.ui.notify("Agent mode off (vanilla pi)");
 	}
@@ -285,6 +336,7 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		currentMode = mode;
 		pi.setActiveTools(MODE_TOOLS[mode]);
 		updateStatus(ctx);
+		chatPersonas?.updateStatus(ctx);
 		persistAgentModeState(mode);
 		ctx.ui.notify(`Agent mode: ${mode}`);
 	}
@@ -307,7 +359,17 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 			currentMode = restored;
 		}
 
-		if (currentMode !== null) {
+		if (currentMode === "workflow" && hasUserMessageOnBranch(ctx)) {
+			currentMode = null;
+			persistAgentModeState(null);
+			pi.setActiveTools(pi.getAllTools().map((t) => t.name));
+			if (ctx.hasUI) {
+				ctx.ui.notify(
+					"Workflow mode was cleared: this session already has user messages. Run /new, then /agent-mode workflow.",
+					"warning",
+				);
+			}
+		} else if (currentMode !== null) {
 			pi.setActiveTools(MODE_TOOLS[currentMode]);
 			// After bindExtensions returns, pi registers discovered themes; then apply the
 			// profile theme (see dot-pi auto-theme). Macrotask runs after reload reapplies
@@ -317,19 +379,28 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 				applyProfileThemeIfNeeded(ctx, modeForTheme);
 			}, 0);
 		}
+		chatPersonas?.sessionStart(ctx, {
+			reason: ev.reason,
+			previousSessionFile: ev.previousSessionFile,
+		});
 		updateStatus(ctx);
 	});
 
 	pi.on("resources_discover", async () => {
 		if (currentMode === null) return {};
 		const paths = agentResourcesDiscoverPaths(currentMode);
+		const extraSkills = chatPersonas?.extraSkillPaths();
+		if (extraSkills?.length) {
+			const merged = [...(paths.skillPaths ?? []), ...extraSkills];
+			paths.skillPaths = [...new Set(merged)];
+		}
 		if (!paths.skillPaths && !paths.promptPaths && !paths.themePaths) return {};
 		return paths;
 	});
 
 	pi.registerCommand("agent-mode", {
 		description:
-			"Activate or switch agent mode (code | scout | web | write | chat); use pi to turn agent mode off — inactive until first use; no args opens a selector",
+			"Activate or switch agent mode (code | scout | web | write | chat | workflow); use pi to turn agent mode off — inactive until first use; no args opens a selector",
 		getArgumentCompletions: (prefix) => {
 			const matches = CYCLE_ORDER.filter((m) => m.startsWith(prefix));
 			if (matches.length === 0) return null;
@@ -369,6 +440,16 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 				return;
 			}
 
+			if (next === "workflow" && hasUserMessageOnBranch(ctx)) {
+				const confirm = await ctx.ui.select(
+					"Workflow mode works best with a clean transcript. A new session is recommended when you already have user messages here.",
+					["Cancel", "Start new session"],
+				);
+				if (confirm !== "Start new session") return;
+				ctx.ui.notify("Run `/new` for a fresh session, then run `/agent-mode workflow` again.", "info");
+				return;
+			}
+
 			setMode(next, ctx);
 			ctx.ui.notify("Reloading so agent resources (skills, prompts, themes) update…", "info");
 			await ctx.reload();
@@ -384,22 +465,28 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		const systemMd = readSystemMd(profile);
 		const appendMd = readAppendSystemMd(profile);
 
-		if (!systemMd && !appendMd) {
-			return undefined;
+		const hadProfileMd = !!(systemMd || appendMd);
+		let effectiveBase: string;
+		if (systemMd && appendMd) {
+			effectiveBase = `${systemMd}\n\n${appendMd}`;
+		} else if (systemMd) {
+			effectiveBase = systemMd;
+		} else if (appendMd) {
+			effectiveBase = `${event.systemPrompt}\n\n${appendMd}`;
+		} else {
+			effectiveBase = event.systemPrompt;
 		}
 
-		if (systemMd && appendMd) {
-			return { systemPrompt: `${systemMd}\n\n${appendMd}` };
+		const finalPrompt = chatPersonas ? chatPersonas.beforeAgentStart(effectiveBase) : effectiveBase;
+
+		if (!hadProfileMd && finalPrompt === event.systemPrompt) {
+			return undefined;
 		}
-		if (systemMd) {
-			return { systemPrompt: systemMd };
-		}
-		return {
-			systemPrompt: `${event.systemPrompt}\n\n${appendMd}`,
-		};
+		return { systemPrompt: finalPrompt };
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		ctx.ui.setStatus("agent-mode", undefined);
+		chatPersonas?.clearStatus(ctx);
 	});
 }

@@ -1,12 +1,14 @@
 # Retro — MAS session retrospective
 
-Review a completed or partial **`mas`** run from durable traces: orchestrator JSONL under the overlay plus worker JSONL under **`subagent-traces/`**. Focus on failures, bad trajectories, weak instruction following, tool errors, and multi-agent handoff issues (especially with smaller open-source models).
+Review a completed or partial **workflow / MAS** run from durable traces: orchestrator session JSONL plus worker JSONL under **`subagent-traces/`**. Focus on failures, bad trajectories, weak instruction following, tool errors, and multi-agent handoff issues (especially with smaller open-source models).
+
+> **mypi (this package):** Worker traces are under **`<session cwd>/.pi/subagent-traces/<run-id>/`**. On first **`subagent`** delegation, the orchestrator session gets a **`customType`** **`mypi.subagent-traces`** line with **`data.traceDir`** (absolute path), **`data.traceRunId`**, and **`data.cwdSessionKey`**. Use that path directly — ignore **`DOT_PI_OVERLAY`** / **`dotpi.subagent-traces`** instructions below when operating in mypi.
 
 ## Goal
 
 Produce a concise, evidence-backed analysis of one named **`mas`** session. Prefer grounded references (paths, line excerpts, **`manifest.json`** fields) over speculation. The primary user input is the **session display name** set via **`/name`** in `mas`, which is stored in orchestrator JSONL as a **`session_info`** record with **`name`** (and **`id`**). That name may hint at what went wrong or what to emphasize.
 
-**Correlation rule:** after you identify the orchestrator **`*.jsonl`** for that session, read a **`type: "custom"`** session line in **that same file** with **`customType`** **`dotpi.subagent-traces`** (written by **`top-level-agent-orchestrator`** on the first **`subagent`** delegation). Its **`data`** object includes **`traceRunId`** and **`traceDirRelativeToDotPiOverlay`**. Resolve the worker bundle directory as the **`DOT_PI_OVERLAY`** environment value concatenated with **`/`** and **`data.traceDirRelativeToDotPiOverlay`**, using forward slashes only. There is no symlink join key and no legacy fallback.
+**Correlation rule:** after you identify the orchestrator **`*.jsonl`** for that session, read a **`type: "custom"`** session line in **that same file** with **`customType`** **`dotpi.subagent-traces`** (written by **`workflow-orchestrator`** on the first **`subagent`** delegation). Its **`data`** object includes **`traceRunId`** and **`traceDirRelativeToDotPiOverlay`**. Resolve the worker bundle directory as the **`DOT_PI_OVERLAY`** environment value concatenated with **`/`** and **`data.traceDirRelativeToDotPiOverlay`**, using forward slashes only. There is no symlink join key and no legacy fallback.
 
 ## Orchestrator constraints
 
@@ -63,18 +65,18 @@ If **`scout`** finds no **`session_info`** match under the **`cwd-key`** session
 
 If multiple **`session_info`** rows still tie-break badly, use **`questionnaire`**.
 
-### 4. Analysis (`coder`)
+### 4. Analysis (`code`)
 
-Call **`coder`** once for **read-only** work (no edits to the user’s project repo, no new files unless the user explicitly asked for a saved report path).
+Call **`code`** once for **read-only** work (no edits to the user’s project repo, no new files unless the user explicitly asked for a saved report path).
 
-The **`coder`** task must:
+The **`code`** task must:
 
 - Use the orchestrator **`*.jsonl`** path and the **`subagent-traces/<run-id>/`** tree from §3. Read the orchestrator log at the canonical path from §3 step 1.
 - Use **`jq`**, **`grep`**, **`head`**, **`tail`**, **`wc`** as needed. Do **not** run destructive commands.
 - Summarize: non-zero **`exitCode`** on **`manifest.json`** workers, **`stderr`**, **`errorMessage`**, **`stopReason`**, failed tool / **`isError`** patterns in worker JSONL, and orchestration issues (wrong worker choice, skipped validation, vague handoffs).
 - Add **prioritized recommendations** and brief instruction-following / model-quality notes (bounded excerpts only — not full file dumps).
 
-This **`coder`** pass replaces a separate **`ask`/judge** step: the analysis and critique are delivered here.
+This **`code`** pass replaces a separate **`chat`/judge** step: the analysis and critique are delivered here.
 
 ### 5. Final Response (orchestrator)
 
@@ -91,14 +93,14 @@ Do not paste entire JSONL files unless the user explicitly asked.
 - **Orchestrator sessions:** value of **`DOT_PI_OVERLAY`** + **`/mas/sessions/<cwd-key>/*.jsonl`**
 - **Trace pointer:** in-session **`custom`** entry **`dotpi.subagent-traces`** (not shown to the LLM) with **`data.traceRunId`** and **`data.traceDirRelativeToDotPiOverlay`**.
 - **Worker traces:** value of **`DOT_PI_OVERLAY`** + **`/`** + **`data.traceDirRelativeToDotPiOverlay`** + **`/manifest.json`** and worker **`*.jsonl`** alongside it.
-- Optional saved report: only if the user asked for a file path; otherwise **`writer`** is not required.
+- Optional saved report: only if the user asked for a file path; otherwise **`write`** is not required.
 
 ## Stop Conditions
 
 - Missing session name/id after **`questionnaire`**.
 - No **`session_info`** match under the **`cwd-key`** **`sessions/`** directory.
 - No **`dotpi.subagent-traces`** custom entry in the matched orchestrator JSONL (stop with blocker).
-- **`coder`** unavailable or blocked — report blocker; do not invent analysis.
+- **`code`** unavailable or blocked — report blocker; do not invent analysis.
 
 ## Final Response
 

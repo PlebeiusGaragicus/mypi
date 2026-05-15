@@ -16,6 +16,7 @@
   "pi": {
     "extensions": [
       "extensions/agent-mode/index.ts",
+      "agents/workflow/extensions/workflow-orchestrator/index.ts",
       "extensions/mypi-branding/index.ts"
     ],
     "skills": [],

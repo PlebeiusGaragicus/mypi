@@ -24,7 +24,7 @@ If the source is an `http://` or `https://` URL, call `web` once to download the
 
 If the source is already a local path, resolve it relative to the working directory and proceed. If the file does not exist or is not a PDF, stop and report the blocker.
 
-Do not ask `ask` to verify paths or URLs; `ask` has no filesystem tools. Use your own `read` / listing tools or delegate to `coder` for existence checks when needed.
+Do not ask `chat` to verify paths or URLs; `chat` has no filesystem tools. Use your own `read` / listing tools or delegate to `code` for existence checks when needed.
 
 ### 3. Resume vs Fresh Ingest
 
@@ -35,7 +35,7 @@ Using your own tools (`read`, `ls`, `find`, `grep` as appropriate):
 
 ### 4. Ingest (render pages)
 
-Call `coder` once for ingestion. Do not split ingestion across multiple workers.
+Call `code` once for ingestion. Do not split ingestion across multiple workers.
 
 The ingest task must include this contract (adapt paths to the resolved PDF):
 
@@ -62,7 +62,7 @@ If ingestion reports missing dependencies or unreadable PDF, stop and report to 
 
 Identify every page that still needs OCR: missing `pages-ocr/page-NNNN.md`, or prior run left `ocr_status` / worker notes indicating `pending` or `failed`.
 
-Dispatch `coder` in parallel `tasks[]`, **one task per page**, each naming exactly one image path, page number, and output markdown path. Keep each `subagent` batch to **at most 8** parallel tasks. Repeat batches until all targeted pages have markdown.
+Dispatch `code` in parallel `tasks[]`, **one task per page**, each naming exactly one image path, page number, and output markdown path. Keep each `subagent` batch to **at most 8** parallel tasks. Repeat batches until all targeted pages have markdown.
 
 Each OCR task must include this contract:
 
@@ -101,7 +101,7 @@ If many pages fail with “vision model unavailable,” stop and report the conf
 
 ### 6. Optional Page Audit
 
-If OCR confirmations flag `needs_review: true`, low confidence, or dense table/diagram warnings, dispatch `coder` in parallel (same batch size cap **8**), **one audit task per flagged page**.
+If OCR confirmations flag `needs_review: true`, low confidence, or dense table/diagram warnings, dispatch `code` in parallel (same batch size cap **8**), **one audit task per flagged page**.
 
 Each audit task:
 
@@ -119,9 +119,9 @@ Inputs: page number <n>, image path <path.png>, markdown path <path.md>
 
 ### 7. Optional Document Assembly
 
-If the user requested a stitched transcript and/or summary, call `writer` once after all page markdown exists.
+If the user requested a stitched transcript and/or summary, call `write` once after all page markdown exists.
 
-The writer task:
+The write task:
 
 ```text
 You are the document assembler.
@@ -139,9 +139,9 @@ Reply with `### Assembled` listing which files were written, page counts, skippe
 
 Use your own `read` (and `ls` / `find` if needed) to confirm `ocr-manifest.json` exists, `pages-ocr/page-*.md` covers expected page range, and any promised `document.md` / `summary.md` exist.
 
-If you use `ask` (for example persona `judge`) for a quality rubric, pass **inline excerpts** or criteria only — never ask `ask` to open a path or URL.
+If you use `chat` (for example persona `judge`) for a quality rubric, pass **inline excerpts** or criteria only — never ask `chat` to open a path or URL.
 
-If validation fails, run at most one repair pass (`coder` for page fixes, `writer` for assembly issues), then re-check. If still failing, stop with partial artifact paths.
+If validation fails, run at most one repair pass (`code` for page fixes, `write` for assembly issues), then re-check. If still failing, stop with partial artifact paths.
 
 ## Artifact Conventions
 
@@ -155,7 +155,7 @@ If validation fails, run at most one repair pass (`coder` for page fixes, `write
 
 - Missing `pdfinfo`/`pdftoppm` and usable ImageMagick fallback.
 - PDF unreadable, encrypted without password, or zero pages.
-- Vision OCR unavailable for `coder` on image inputs.
+- Vision OCR unavailable for `code` on image inputs.
 - User cancels or scope is impossible without new input.
 
 ## Final Response

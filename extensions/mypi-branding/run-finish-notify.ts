@@ -59,7 +59,7 @@ function notifyMacOS(title: string, body: string): void {
 	// `sound name` = basename (no .aiff) from /System/Library/Sounds or ~/Library/Sounds.
 	// System defaults: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink.
 	// Omit `sound name …` entirely for a silent notification.
-	const script = `display notification "${body}" with title "${title}" sound name "Purr"`;
+	const script = `display notification "${body}" with title "${title}" sound name "Submarine"`;
 	exec(`osascript -e '${script}'`, () => {});
 }
 
