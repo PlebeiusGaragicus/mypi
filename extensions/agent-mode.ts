@@ -1,9 +1,10 @@
 /**
  * Agent mode extension: /agent-mode switches among code, scout, web, write, and chat; **`pi` turns agent mode off**
- * (same as inactive: vanilla tools, prompts, and discovery) and is offered in the selector and Ctrl+Shift+R cycle.
+ * (same as inactive: vanilla tools, prompts, and discovery) and is offered in the selector.
  * Default: **inactive** until the user runs `/agent-mode`.
  * When a mode is active, per-profile resources under this package's `agents/<profile>/{skills,prompts,themes}/`
- * are registered via resources_discover (paths anchored to the install root); mode changes reload pi.
+ * are registered via `resources_discover` (paths anchored to the install root). Mode changes call `ctx.reload()` so
+ * skills, prompts, themes, and tools stay in sync.
  *
  * Per active profile under `agents/<profile>/`, optional markdown files control the system prompt (no
  * mode-specific branching):
@@ -23,7 +24,7 @@ const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 type AgentMode = "chat" | "scout" | "write" | "web" | "code";
 
-/** `pi` is only a UI/cycle slot meaning “deactivate agent mode”, not a stored profile. */
+/** `pi` is only a selector slot meaning “deactivate agent mode”, not a stored profile. */
 type AgentModeSelector = AgentMode | "pi";
 
 const CYCLE_ORDER: AgentModeSelector[] = ["chat", "scout", "write", "web", "code", "pi"];
@@ -198,12 +199,6 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		ctx.ui.notify(`Agent mode: ${MODE_LABELS[mode]}`);
 	}
 
-	function cycleToNextSlot(): AgentModeSelector {
-		const idx = currentMode === null ? -1 : CYCLE_ORDER.indexOf(currentMode);
-		const nextIdx = idx < 0 ? 0 : (idx + 1) % CYCLE_ORDER.length;
-		return CYCLE_ORDER[nextIdx]!;
-	}
-
 	// Run before resources_discover so restored mode is visible on startup/reload.
 	pi.on("session_start", async (_event, ctx) => {
 		currentMode = null;
@@ -233,31 +228,6 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		const paths = agentResourcesDiscoverPaths(currentMode);
 		if (!paths.skillPaths && !paths.promptPaths && !paths.themePaths) return {};
 		return paths;
-	});
-
-	pi.registerShortcut("ctrl+option+r", {
-		description: "Cycle agent mode (chat → scout → write → web → code → off)",
-		handler: async (ctx) => {
-			if (!ctx.hasUI) return;
-			const next = cycleToNextSlot();
-			if (next === "pi") {
-				if (currentMode === null) {
-					ctx.ui.notify("Agent mode is already off.", "info");
-					return;
-				}
-				deactivateAgentMode(ctx);
-				ctx.ui.notify("Reloading so agent resources (skills, prompts, themes) update…", "info");
-				await ctx.reload?.();
-				return;
-			}
-			if (currentMode !== null && next === currentMode) {
-				ctx.ui.notify(`Already in ${MODE_LABELS[next]} mode.`, "info");
-				return;
-			}
-			setMode(next, ctx);
-			ctx.ui.notify("Reloading so agent resources (skills, prompts, themes) update…", "info");
-			await ctx.reload?.();
-		},
 	});
 
 	pi.registerCommand("agent-mode", {

@@ -6,10 +6,11 @@ import registerRunTimer from "./run-timer";
 import registerSave from "./save";
 import registerSay from "./say";
 import { registerSystemView } from "./system-view";
+import { registerThemeCycler } from "./theme-cycler";
 import { registerWindowTitle } from "./title";
 
 /**
- * MyPi bundled UI extensions (header, editor, window title, run timer, finish notify, /save, TTS, system prompt debug).
+ * MyPi bundled UI extensions (header, editor, window title, run timer, finish notify, /save, TTS, system prompt debug, theme hotkey).
  * Keeps modules split; compose here.
  */
 export default function mypiExtensions(pi: ExtensionAPI): void {
@@ -21,4 +22,5 @@ export default function mypiExtensions(pi: ExtensionAPI): void {
   registerSave(pi);
   registerSay(pi);
   registerSystemView(pi);
+  registerThemeCycler(pi);
 }
