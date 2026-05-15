@@ -17,8 +17,7 @@
     "extensions": [
       "extensions/bootstrap-path.ts",
       "extensions/agent-mode.ts",
-      "extensions/mypi-branding/index.ts",
-      "extensions/tps.ts"
+      "extensions/mypi-branding/index.ts"
     ],
     "skills": [],
     "prompts": [],

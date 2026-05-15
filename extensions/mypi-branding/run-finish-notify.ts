@@ -1,22 +1,65 @@
 /**
- * Run finish notification — desktop + in-TUI when the agent finishes a turn.
+ * Run finish notification — desktop when the agent finishes a turn.
  *
- * Platforms: macOS `osascript`, Linux `notify-send`, Windows PowerShell toast (only when
- * `WT_SESSION` is set), else Kitty OSC 99 or OSC 777 when stdout is a TTY. Skipped when
+ * Platforms: macOS `osascript`, Linux `notify-send`, else Kitty OSC 99 or OSC 777 when stdout is a TTY. Skipped when
  * `process.stdout.isTTY` is false.
  *
- * On `agent_end`: `ctx.ui.notify` plus system notification; body reflects whether tools ran.
+ * On `agent_end`: system notification; body is a short preview of the last assistant text reply (or a fallback).
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { exec } from "child_process";
 
+const NOTIFY_PREVIEW_CHARS = 80;
+
+/** Safe one-line snippet for OS notifications (shell / AppleScript / OSC). */
+function sanitizeNotifyText(s: string): string {
+	return s
+		.replace(/\r?\n/g, " ")
+		.replace(/;/g, ",")
+		.replace(/"/g, "'")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function truncateNotifyPreview(s: string, maxChars: number): string {
+	const one = sanitizeNotifyText(s);
+	if (one.length <= maxChars) return one;
+	return `${one.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+/** Last assistant message: concatenate `text` parts only (skip thinking / tool calls). */
+function lastAssistantReplyPreview(messages: { role: string; content?: unknown }[]): string {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const msg = messages[i];
+		if (!msg || msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+		const chunks: string[] = [];
+		for (const part of msg.content) {
+			if (
+				part &&
+				typeof part === "object" &&
+				"type" in part &&
+				(part as { type: string }).type === "text" &&
+				"text" in part &&
+				typeof (part as { text: unknown }).text === "string"
+			) {
+				chunks.push((part as { text: string }).text);
+			}
+		}
+		const joined = chunks.join(" ").trim();
+		if (joined.length > 0) return truncateNotifyPreview(joined, NOTIFY_PREVIEW_CHARS);
+	}
+	return "";
+}
+
 /**
  * Send notification on macOS using AppleScript.
  */
 function notifyMacOS(title: string, body: string): void {
-	// Display a notification with a sound
-	const script = `display notification "${body}" with title "${title}" sound name "Glass"`;
+	// `sound name` = basename (no .aiff) from /System/Library/Sounds or ~/Library/Sounds.
+	// System defaults: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine, Tink.
+	// Omit `sound name …` entirely for a silent notification.
+	const script = `display notification "${body}" with title "${title}" sound name "Purr"`;
 	exec(`osascript -e '${script}'`, () => {});
 }
 
@@ -25,25 +68,6 @@ function notifyMacOS(title: string, body: string): void {
  */
 function notifyLinux(title: string, body: string): void {
 	exec(`notify-send "${title}" "${body}"`, () => {});
-}
-
-/**
- * Send Windows toast notification via PowerShell.
- */
-function notifyWindows(title: string, body: string): void {
-	if (!process.env.WT_SESSION) return;
-
-	const script = [
-		`$type = "Windows.UI.Notifications"`,
-		`$mgr = [$type.ToastNotificationManager, $type, ContentType = WindowsRuntime]`,
-		`$template = [$type.ToastTemplateType]::ToastText01`,
-		`$xml = [$type.ToastNotificationManager]::GetTemplateContent($template)`,
-		`$xml.GetElementsByTagName('text')[0].AppendChild($xml.CreateTextNode('${body}')) > $null`,
-		`[$type.ToastNotificationManager]::CreateToastNotifier('${title}').Show([$type.ToastNotification]::new($xml))`,
-	].join("; ");
-
-	const { execFile } = require("child_process");
-	execFile("powershell.exe", ["-NoProfile", "-Command", script]);
 }
 
 /**
@@ -74,9 +98,6 @@ function notify(title: string, body: string): void {
 		} catch (e) {
 			// Fall through to OSC method
 		}
-	} else if (process.platform === "win32") {
-		notifyWindows(title, body);
-		return;
 	} else if (process.platform === "linux") {
 		try {
 			notifyLinux(title, body);
@@ -102,7 +123,7 @@ export default function (pi: ExtensionAPI) {
 	 * The "agent_end" event fires after all tool calls are complete and
 	 * the final assistant message has been processed.
 	 */
-	pi.on("agent_end", async (event, ctx) => {
+	pi.on("agent_end", async (event, _ctx) => {
 		if (!process.stdout.isTTY) return;
 
 		// Determine if there were tool calls in this run
@@ -124,13 +145,10 @@ export default function (pi: ExtensionAPI) {
 			if (hadToolCalls) break;
 		}
 
-		// Create notification message
-		const notificationBody = hadToolCalls
-			? "Run completed with tool calls"
-			: "Run completed - ready for input";
-
-		// Show in-app notification via TUI
-		ctx.ui.notify("Pi Agent", "info");
+		const preview = lastAssistantReplyPreview(messages);
+		const notificationBody =
+			preview ||
+			(hadToolCalls ? "Run completed (tools only)" : "Run completed — ready for input");
 
 		// Send system notification
 		notify("Pi Agent", notificationBody);

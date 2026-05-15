@@ -37,14 +37,52 @@ const MODE_TOOLS: Record<AgentMode, string[]> = {
 	code: ["ls", "find", "grep", "read", "write", "edit", "bash"],
 };
 
-const MODE_LABELS: Record<AgentModeSelector, string> = {
-	chat: "Chat",
-	scout: "Scout",
-	write: "Write",
-	web: "Web",
-	code: "Code",
-	pi: "Pi",
+/** Right-hand summary on each `/agent-mode` picker row only — status bar uses the mode id (e.g. `write`). */
+const MODE_MENU_DESCRIPTIONS: Record<AgentModeSelector, string> = {
+	chat: "no tools — conversation only",
+	scout: "read files only",
+	write: "read and edit files",
+	web: "read files and run shell commands",
+	code: "all tools available",
+	pi: "agent mode off - vanilla Pi",
 };
+
+/** Single-cell markers so each row reads distinctly in the plain-text selector (no Pi UI changes). */
+const MODE_SELECT_MARK: Record<AgentModeSelector, string> = {
+	chat: "○",
+	scout: "◇",
+	write: "▲",
+	web: "◆",
+	code: "■",
+	pi: "·",
+};
+
+const MODE_ID_COL = 6;
+/** Wide enough for `MODE_TOOLS.code` joined with ", " (alignment before the second ` — `). */
+const MODE_TOOLS_COL = 40;
+
+function summarizeToolsForSelect(m: AgentModeSelector): string {
+	if (m === "pi") return "—";
+	const tools = MODE_TOOLS[m];
+	if (tools.length === 0) return "none";
+	return tools.join(", ");
+}
+
+/**
+ * Theme-cycler style: fixed token first for parsing, then ` — ` segments; columns padded for separation.
+ * Returned choice is parsed with {@link parseAgentModeSelectChoice}.
+ */
+function formatAgentModeSelectRow(m: AgentModeSelector): string {
+	const id = m.padEnd(MODE_ID_COL);
+	const tools = summarizeToolsForSelect(m).padEnd(MODE_TOOLS_COL);
+	const mark = MODE_SELECT_MARK[m];
+	return `${id} ${mark}  │  ${tools}  —  ${MODE_MENU_DESCRIPTIONS[m]}`;
+}
+
+function parseAgentModeSelectChoice(choice: string): AgentModeSelector | undefined {
+	const first = choice.trim().split(/\s+/)[0];
+	return CYCLE_ORDER.find((mode) => mode === first);
+}
 
 /**
  * Subdirectory of `<package>/agents/` for this mode. Expected layout:
@@ -178,9 +216,8 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 			ctx.ui.setStatus("agent-mode", undefined);
 			return;
 		}
-		const label = MODE_LABELS[currentMode];
 		const color = statusThemeColor(currentMode);
-		ctx.ui.setStatus("agent-mode", ctx.ui.theme.fg(color, `mode: ${label}`));
+		ctx.ui.setStatus("agent-mode", ctx.ui.theme.fg(color, `mode: ${currentMode}`));
 	}
 
 	function deactivateAgentMode(ctx: ExtensionContext): void {
@@ -196,7 +233,7 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		pi.setActiveTools(MODE_TOOLS[mode]);
 		updateStatus(ctx);
 		persistAgentModeState(mode);
-		ctx.ui.notify(`Agent mode: ${MODE_LABELS[mode]}`);
+		ctx.ui.notify(`Agent mode: ${mode}`);
 	}
 
 	// Run before resources_discover so restored mode is visible on startup/reload.
@@ -236,16 +273,16 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 		getArgumentCompletions: (prefix) => {
 			const matches = CYCLE_ORDER.filter((m) => m.startsWith(prefix));
 			if (matches.length === 0) return null;
-			return matches.map((m) => ({ value: m, label: `${m} (${MODE_LABELS[m]})` }));
+			return matches.map((m) => ({ value: m, label: formatAgentModeSelectRow(m) }));
 		},
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			const trimmed = args.trim();
 			let next: AgentModeSelector | undefined;
 			if (!trimmed) {
-				const items = CYCLE_ORDER.map((m) => `${m} (${MODE_LABELS[m]})`);
+				const items = CYCLE_ORDER.map((m) => formatAgentModeSelectRow(m));
 				const choice = await ctx.ui.select("Agent mode", items);
 				if (!choice) return;
-				next = CYCLE_ORDER.find((m) => choice.startsWith(`${m} (`));
+				next = parseAgentModeSelectChoice(choice);
 				if (!next) return;
 			} else {
 				const parsed = parseModeArg(trimmed);
@@ -268,7 +305,7 @@ export default function agentModeExtension(pi: ExtensionAPI): void {
 			}
 
 			if (currentMode !== null && next === currentMode) {
-				ctx.ui.notify(`Already in ${MODE_LABELS[next]} mode.`, "info");
+				ctx.ui.notify(`Already using ${next}`, "info");
 				return;
 			}
 

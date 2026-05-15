@@ -4,13 +4,14 @@ import { registerRainbowEditor } from "./rainbow-editor";
 import registerRunFinishNotify from "./run-finish-notify";
 import registerRunTimer from "./run-timer";
 import registerSave from "./save";
+import registerTps from "./tps";
 import registerSay from "./say";
 import { registerSystemView } from "./system-view";
 import { registerThemeCycler } from "./theme-cycler";
 import { registerWindowTitle } from "./title";
 
 /**
- * MyPi bundled UI extensions (header, editor, window title, run timer, finish notify, /save, TTS, system prompt debug, theme hotkey).
+ * MyPi bundled UI extensions (header, editor, window title, run timer, TPS, finish notify, /save, TTS, system prompt debug, theme hotkey).
  * Keeps modules split; compose here.
  */
 export default function mypiExtensions(pi: ExtensionAPI): void {
@@ -18,6 +19,7 @@ export default function mypiExtensions(pi: ExtensionAPI): void {
   registerRainbowEditor(pi);
   registerWindowTitle(pi);
   registerRunTimer(pi);
+  registerTps(pi);
   registerRunFinishNotify(pi);
   registerSave(pi);
   registerSay(pi);
