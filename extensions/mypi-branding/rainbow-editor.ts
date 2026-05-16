@@ -3,6 +3,7 @@
  */
 
 import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { brandingFgRgb } from "./branding-color-support";
 
 // Base colors (coral → yellow → green → teal → blue → purple → pink)
 const COLORS: [number, number, number][] = [
@@ -17,8 +18,8 @@ const COLORS: [number, number, number][] = [
 const RESET = "\x1b[0m";
 
 function brighten(rgb: [number, number, number], factor: number): string {
-  const [r, g, b] = rgb.map((c) => Math.round(c + (255 - c) * factor));
-  return `\x1b[38;2;${r};${g};${b}m`;
+	const [r, g, b] = rgb.map((c) => Math.round(c + (255 - c) * factor));
+	return brandingFgRgb([r, g, b]);
 }
 
 function colorize(text: string, shinePos: number): string {

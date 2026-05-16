@@ -1,8 +1,9 @@
 import path from "node:path";
 import type {
-  ExtensionAPI,
-  ExtensionContext,
+	ExtensionAPI,
+	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { brandingFgRgb } from "./branding-color-support";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -49,8 +50,8 @@ function sampleGradient(position: number) {
   return [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)] as Rgb;
 }
 
-function fg([r, g, b]: Rgb, text: string) {
-  return `\x1b[38;2;${r};${g};${b}m${text}${RESET}`;
+function fg(rgb: Rgb, text: string) {
+	return `${brandingFgRgb(rgb)}${text}${RESET}`;
 }
 
 function gradientText(text: string, phase: number) {
