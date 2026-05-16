@@ -12,7 +12,8 @@
  * - `MYPI_BRANDING_TRUECOLOR=0` → 256 only
  * - `MYPI_BRANDING_TRUECOLOR=1` → 24-bit (override blocklist / depth)
  * - **Intel Mac + Terminal.app** (`darwin` + `os.arch() === "x64"` + `isAppleTerminalLikeSession`) → 256
- * - TTY `getColorDepth() < 24` → 256 (any OS; not tied to Terminal.app)
+ * - **Apple Silicon macOS** (`darwin` + `arm64`) → 24-bit (skip `getColorDepth`; Node often reports 8 in Terminal.app)
+ * - TTY `getColorDepth() < 24` → 256 (non–Apple-Silicon-macOS hosts)
  * - else → 24-bit
  *
  * `brandingFgRgb`: if `NO_COLOR` is set (non-empty), emit no color prefix (spec).
@@ -45,6 +46,8 @@ function computeBrandingUseTruecolor(): boolean {
 	if (process.env.MYPI_BRANDING_TRUECOLOR === "0") return false;
 	if (process.env.MYPI_BRANDING_TRUECOLOR === "1") return true;
 	if (shouldForceLegacyForAppleTerminal()) return false;
+	// Node often reports getColorDepth() === 8 in Terminal.app; truecolor still works on AS.
+	if (process.platform === "darwin" && arch() === "arm64") return true;
 	const stream = ttyStreamForDepth();
 	const depth =
 		typeof stream.getColorDepth === "function" ? stream.getColorDepth() : 1;

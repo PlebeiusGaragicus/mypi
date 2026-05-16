@@ -20,7 +20,7 @@ Install as a Pi package:
 pi install https://github.com/PlebeiusGaragicus/mypi.git
 ```
 
-Session header branding **automatically** uses 256-color instead of 24-bit on **Intel Mac + Terminal.app** (`darwin`, `x64`, `TERM_PROGRAM` / bundle id) and on any terminal that reports color depth below truecolor. Override only if needed: `MYPI_BRANDING_TRUECOLOR=0` forces 256, `=1` forces 24-bit.
+Session header branding: **256-color** on **Intel Mac + Terminal.app** only (`darwin`, `x64`, Terminal session). **Apple Silicon macOS** always uses **truecolor** for branding (Node often reports low `getColorDepth()` in Terminal.app; we do not downgrade). On **other** systems, truecolor is used when `getColorDepth() >= 24`, else 256. Overrides: `MYPI_BRANDING_TRUECOLOR=0` forces 256, `=1` forces 24-bit.
 
 ## Local Development
 
