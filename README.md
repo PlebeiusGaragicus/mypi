@@ -17,8 +17,10 @@ It provides:
 Install as a Pi package:
 
 ```sh
-pi install https://github.com/PlebeiusGaragius/mypi
+pi install https://github.com/PlebeiusGaragicus/mypi.git
 ```
+
+Session header branding **automatically** uses 256-color instead of 24-bit on Apple Terminal (detected via `TERM_PROGRAM` / macOS bundle id) and on terminals that report color depth below truecolor. Override only if needed: `MYPI_BRANDING_TRUECOLOR=0` forces 256, `=1` forces 24-bit.
 
 ## Local Development
 
