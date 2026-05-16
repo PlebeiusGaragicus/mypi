@@ -17,7 +17,7 @@ It provides:
 Install as a Pi package:
 
 ```sh
-pi install https://github.com/PlebeiusGaragius/mypi
+pi install https://github.com/PlebeiusGaragicus/mypi.git
 ```
 
 ## Local Development
