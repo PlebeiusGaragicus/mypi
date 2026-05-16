@@ -11,12 +11,14 @@
  * Precedence for 24-bit vs 256 (`brandingUseTruecolor`):
  * - `MYPI_BRANDING_TRUECOLOR=0` → 256 only
  * - `MYPI_BRANDING_TRUECOLOR=1` → 24-bit (override blocklist / depth)
- * - Apple Terminal session → 256 (see `isAppleTerminalLikeSession`; no user env required)
- * - TTY `getColorDepth() < 24` → 256
+ * - **Intel Mac + Terminal.app** (`darwin` + `os.arch() === "x64"` + `isAppleTerminalLikeSession`) → 256
+ * - TTY `getColorDepth() < 24` → 256 (any OS; not tied to Terminal.app)
  * - else → 24-bit
  *
  * `brandingFgRgb`: if `NO_COLOR` is set (non-empty), emit no color prefix (spec).
  */
+
+import { arch } from "node:os";
 
 function ttyStreamForDepth(): NodeJS.WriteStream {
 	if (process.stdout.isTTY) return process.stdout;
@@ -32,10 +34,17 @@ function isAppleTerminalLikeSession(): boolean {
 	return false;
 }
 
+/** Terminal.app truecolor workaround: Intel macOS only (not Linux x64, not Apple Silicon). */
+function shouldForceLegacyForAppleTerminal(): boolean {
+	if (process.platform !== "darwin") return false;
+	if (arch() !== "x64") return false;
+	return isAppleTerminalLikeSession();
+}
+
 function computeBrandingUseTruecolor(): boolean {
 	if (process.env.MYPI_BRANDING_TRUECOLOR === "0") return false;
 	if (process.env.MYPI_BRANDING_TRUECOLOR === "1") return true;
-	if (isAppleTerminalLikeSession()) return false;
+	if (shouldForceLegacyForAppleTerminal()) return false;
 	const stream = ttyStreamForDepth();
 	const depth =
 		typeof stream.getColorDepth === "function" ? stream.getColorDepth() : 1;

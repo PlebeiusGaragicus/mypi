@@ -3,7 +3,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { brandingFgRgb } from "./branding-color-support";
+import { brandingFgRgb, brandingUseTruecolor } from "./branding-color-support";
 
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
@@ -125,8 +125,13 @@ function renderHeader(width: number, phase: number, subtitleText: string) {
   );
   const subtitle = center(subtitleText, width);
 
+  const legacyBanner = !brandingUseTruecolor()
+    ? center(fg([102, 102, 128], "Using Legacy color support"), width)
+    : null;
+
   return [
     "",
+    ...(legacyBanner ? [legacyBanner] : []),
     ...lines,
     `${BOLD}${gradientText(subtitle, phase + 0.18)}${RESET}`,
     "",
