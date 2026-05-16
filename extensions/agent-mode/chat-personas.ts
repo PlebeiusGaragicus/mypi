@@ -2,6 +2,7 @@
  * Chat-mode personas: markdown overlays under `agents/chat/personas/`, `/persona` command,
  * `--persona` CLI flag, session persistence (`customType` `personas`), optional tools/skills/theme in frontmatter.
  * Only applies when agent mode is `chat`. Slash command is not registered for `PI_IS_SUBAGENT` workers.
+ * With no active persona, the chat profile alone applies (`agents/chat/SYSTEM.md` / `APPEND_SYSTEM.md` via agent-mode).
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -197,8 +198,7 @@ export function createChatPersonaController(options: ChatPersonaControllerOption
 	if (personas.size === 0) return null;
 
 	const isSubagent = process.env.PI_IS_SUBAGENT === "1";
-	const defaultPersona: string | null = personas.has("chat") ? "chat" : null;
-	let activePersona: string | null = defaultPersona;
+	let activePersona: string | null = null;
 	let baselineTools: string[] | null = null;
 	let baselineTheme: string | null = null;
 
