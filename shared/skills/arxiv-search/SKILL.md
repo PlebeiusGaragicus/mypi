@@ -56,6 +56,13 @@ Options:
 
 Never fetch the PDF unless explicitly instructed. If the script says the paper has no arXiv HTML version, tell the user and stop unless they ask for another retrieval path or were clear about wanting PDF versions.
 
+## Synthesis and human-facing summaries
+
+1. Deprioritize routine metadata in prose — do not open with or dwell on: full author lists, submission/update dates, or arXiv category taxonomy (cs.GT, etc.). Those are discovery fields from search output, not summary content. - focus on paper substance instead
+1. Lead with substance — First 1–3 sentences: what the paper studies, the core idea or method, and the main takeaway or limitation relevant to the user’s question. No preamble like “This paper is titled…” unless the user asked for a formal citation block.
+1. Tie to the question — restate how each point answers the user’s task; avoid abstract dumps that restate the arXiv abstract without framing.
+1. Provide section/subsection when covering paper contents.  Without being too verbose or repeating concepts, try to cover all aspects of the paper.
+
 ## Workflow
 
 1. Search with 5-10 results unless the task clearly needs broader coverage.
