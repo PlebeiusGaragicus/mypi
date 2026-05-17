@@ -1,0 +1,185 @@
+#!/usr/bin/env bash
+# lmstudio-models — Query LM Studio /api/v1/models and print a pi-compatible
+# models.json to stdout. Does not modify any files.
+#
+# Usage:
+#   core/scripts/lmstudio-models [--url URL] [--key KEY] [--name NAME]
+#
+# Without flags, prompts interactively for URL, API key, and provider name.
+
+set -euo pipefail
+
+SCRIPT_NAME="${0##*/}"
+
+die() { echo "$SCRIPT_NAME: $*" >&2; exit 1; }
+
+for cmd in curl python3; do
+  command -v "$cmd" >/dev/null 2>&1 || die "required command not found: $cmd"
+done
+
+origin_from_baseurl() {
+  python3 -c '
+import sys
+from urllib.parse import urlparse, urlunparse
+raw = (sys.argv[1] or "").strip()
+p = urlparse(raw if "://" in raw else "http://" + raw)
+if not p.netloc:
+    print("Invalid URL", file=sys.stderr)
+    sys.exit(1)
+o = urlunparse((p.scheme, p.netloc, "", "", "", ""))
+print(o.rstrip("/"))
+' "$1" 2>/dev/null || die "could not parse URL: $1"
+}
+
+# --- Parse flags ---
+
+FLAG_URL="" FLAG_KEY="" FLAG_NAME=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --url)  FLAG_URL="$2"; shift 2 ;;
+    --key)  FLAG_KEY="$2"; shift 2 ;;
+    --name) FLAG_NAME="$2"; shift 2 ;;
+    -h|--help)
+      cat >&2 <<USAGE
+Usage: $SCRIPT_NAME [--url URL] [--key KEY] [--name NAME]
+
+Queries LM Studio's /api/v1/models and prints a pi-compatible models.json.
+
+Flags:
+  --url URL    LM Studio server URL (e.g. http://localhost:1234)
+  --key KEY    API key (leave empty if auth is disabled)
+  --name NAME  Provider name in the output JSON (default: lmstudio)
+
+Without flags, prompts interactively.
+USAGE
+      exit 0
+      ;;
+    *) die "unknown flag: $1" ;;
+  esac
+done
+
+# --- Resolve connection details interactively if needed ---
+
+BASE_URL="$FLAG_URL"
+API_KEY="$FLAG_KEY"
+PROVIDER_NAME="${FLAG_NAME:-}"
+
+if [ -z "$BASE_URL" ]; then
+  printf "LM Studio server URL (e.g. http://localhost:1234): " >&2
+  read -r BASE_URL
+  [ -n "$BASE_URL" ] || die "URL is required"
+fi
+
+if [ -z "$API_KEY" ] && [ -z "$FLAG_KEY" ]; then
+  printf "API key (leave blank if none): " >&2
+  read -r API_KEY
+fi
+
+if [ -z "$PROVIDER_NAME" ]; then
+  printf "Provider name for models.json [lmstudio]: " >&2
+  read -r PROVIDER_NAME
+  PROVIDER_NAME="${PROVIDER_NAME:-lmstudio}"
+fi
+
+ORIGIN=$(origin_from_baseurl "$BASE_URL")
+# Ensure baseUrl ends with /v1 for pi's openai-completions API
+PI_BASE_URL="${ORIGIN}/v1"
+
+# --- Fetch models ---
+
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+
+AUTH_ARGS=()
+[ -n "$API_KEY" ] && AUTH_ARGS=(-H "Authorization: Bearer ${API_KEY}")
+
+echo "Fetching models from $ORIGIN/api/v1/models ..." >&2
+CODE=$(curl -sS -o "$TMP" -w '%{http_code}' "${AUTH_ARGS[@]}" "$ORIGIN/api/v1/models" || true)
+[ "$CODE" = "200" ] || die "LM Studio returned HTTP $CODE from $ORIGIN/api/v1/models"
+
+# --- Transform to pi models.json ---
+
+python3 -c '
+import json, sys
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+base_url = sys.argv[2]
+api_key = sys.argv[3]
+provider_name = sys.argv[4]
+
+def map_thinking_levels(allowed_options):
+    """Map LM Studio allowed_options to pi thinkingLevelMap."""
+    if not allowed_options:
+        return None
+
+    opts = set(allowed_options)
+    level_map = {}
+
+    if "off" in opts:
+        level_map["off"] = "none"
+    else:
+        level_map["off"] = None
+
+    if "low" in opts:
+        level_map["low"] = "low"
+        level_map["minimal"] = None
+    else:
+        level_map["minimal"] = None
+        level_map["low"] = None
+
+    if "medium" in opts:
+        level_map["medium"] = "medium"
+    else:
+        level_map["medium"] = None
+
+    if "high" in opts or "on" in opts:
+        level_map["high"] = "high"
+    else:
+        level_map["high"] = None
+
+    return level_map
+
+
+models = []
+for m in data.get("models", []):
+    if m.get("type") == "embedding":
+        continue
+
+    caps = m.get("capabilities", {})
+    reasoning_cfg = caps.get("reasoning", {})
+    allowed = reasoning_cfg.get("allowed_options", [])
+    has_reasoning = len(allowed) > 0 and allowed != ["off"]
+
+    quant = m.get("quantization", {})
+    quant_name = quant.get("name", "") if quant else ""
+    display = m.get("display_name", m["key"])
+    name = f"{display} ({quant_name})" if quant_name else display
+
+    vision = caps.get("vision", False)
+
+    entry = {"id": m["key"], "name": name, "reasoning": has_reasoning}
+
+    if has_reasoning:
+        level_map = map_thinking_levels(allowed)
+        if level_map:
+            entry["thinkingLevelMap"] = level_map
+
+    entry["input"] = ["text", "image"] if vision else ["text"]
+    entry["contextWindow"] = m.get("max_context_length", 128000)
+
+    models.append(entry)
+
+provider = {"baseUrl": base_url, "api": "openai-completions", "models": models}
+if api_key:
+    provider["apiKey"] = api_key
+
+result = {"providers": {provider_name: provider}}
+
+print(json.dumps(result, indent=2))
+
+count = len(models)
+reasoning_count = sum(1 for m in models if m["reasoning"])
+print(f"\n# {count} models ({reasoning_count} with reasoning)", file=sys.stderr)
+' "$TMP" "$PI_BASE_URL" "$API_KEY" "$PROVIDER_NAME"
