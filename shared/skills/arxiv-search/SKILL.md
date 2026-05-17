@@ -15,7 +15,7 @@ The scripts use only standard Python plus `pandoc` for HTML-to-text conversion. 
 ```bash
 arxiv-search "ti:rotary AND abs:position AND cat:cs.LG" --num 10
 arxiv-search "abs:\"rotary position embedding\" AND cat:cs.CL" --sort submittedDate
-arxiv-fetch 2104.09864 --max-chars 12000
+arxiv-fetch 2104.09864
 ```
 
 ## Search
@@ -43,16 +43,18 @@ Avoid naked `all:` plus wide `OR` for ambiguous terms. For short tokens like RoP
 Use **`arxiv-fetch`** after search when one paper is worth reading more deeply:
 
 ```bash
-arxiv-fetch 1706.03762 --max-chars 20000
+arxiv-fetch 1706.03762
+arxiv-fetch 1706.03762 --max-chars 12000
 arxiv-fetch https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt
 ```
 
 Options:
 
-- `--max-chars N`: max text characters in readable stdout, default 20000.
+- Default stdout is the **full** converted plain text (no truncation). Host tools may still cap captured output; use `--output` to a workspace file when you need the entire file on disk.
+- `--max-chars N`: optional; truncate stdout to N characters and append `...[truncated]` (for quick previews only).
 - `--output PATH`: write the full converted text to a file and print a short status line.
 
-Never fetch the PDF. If the script says the paper has no arXiv HTML version, tell the user and stop unless they ask for another retrieval path.
+Never fetch the PDF unless explicitly instructed. If the script says the paper has no arXiv HTML version, tell the user and stop unless they ask for another retrieval path or were clear about wanting PDF versions.
 
 ## Workflow
 
@@ -67,4 +69,4 @@ Never fetch the PDF. If the script says the paper has no arXiv HTML version, tel
 
 - If a script exits nonzero, read stderr before retrying.
 - If search returns no results, suggest broadening the query by dropping field prefixes, removing `AND` clauses, or trying synonyms.
-- If output is too verbose, retry with fewer results or a lower `--max-chars` value.
+- If **search** output is too verbose, retry with fewer results. For **fetch**, use `--max-chars` only when you want a short stdout preview; otherwise rely on full stdout or `--output`.

@@ -9,6 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 
 USER_AGENT = "pi-search-agent"
@@ -20,8 +21,9 @@ def parse_args() -> argparse.Namespace:
         description="Fetch arXiv HTML and convert it to plain text with pandoc.",
         epilog=(
             "Examples:\n"
-            "  arxiv-fetch 1706.03762 --max-chars 20000\n"
-            "  arxiv-fetch https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt"
+            "  arxiv-fetch 1706.03762\n"
+            "  arxiv-fetch 1706.03762 --max-chars 12000\n"
+            "  arxiv-fetch https://arxiv.org/abs/2104.09864 --output ./paper.txt\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -29,8 +31,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--max-chars",
         type=parse_max_chars,
-        default=20000,
-        help="max text characters to print when not using --output (default: 20000)",
+        default=None,
+        metavar="N",
+        help="if set, truncate stdout to N characters and append ...[truncated]; default is full text on stdout",
     )
     parser.add_argument("--output", help="write the full converted text to this path")
     return parser.parse_args()
@@ -103,8 +106,8 @@ def html_to_text(html: bytes) -> str:
     return process.stdout.decode("utf-8", errors="replace")
 
 
-def print_text(text: str, max_chars: int) -> None:
-    if len(text) <= max_chars:
+def print_text(text: str, max_chars: Optional[int]) -> None:
+    if max_chars is None or len(text) <= max_chars:
         print(text, end="" if text.endswith("\n") else "\n")
         return
 
