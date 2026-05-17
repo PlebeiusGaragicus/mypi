@@ -10,6 +10,7 @@
     "url": "git+https://github.com/PlebeiusGaragicus/dot-pi.git"
   },
   "license": "MIT",
+  "type": "module",
   "scripts": {
     "postinstall": "bash scripts/hello-world.sh"
   },

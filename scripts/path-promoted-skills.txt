@@ -1,0 +1,8 @@
+# Skill folder names under shared/skills/<name>/ whose scripts/ directory is
+# prepended to PATH ("promoted") for Pi agent shells and humans using `pi`.
+# One name per line; later lines win if names collide.
+# Lines starting with # and blank lines are ignored.
+
+todo
+ntfy
+arxiv-search

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Curated PATH for skill scripts (mirrors extensions/agent-mode/bootstrap-path.ts).
+# Prepends promoted skill script dirs to PATH (see scripts/path-promoted-skills.txt).
 # From repo root:  source scripts/bootstrap.sh
 # Pi loads extensions/agent-mode/index.ts (which pulls in bootstrap-path) automatically; this file is for
 # normal shells (e.g. dev outside pi).
@@ -7,6 +7,29 @@
 set -euo pipefail
 
 _mypi_root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)"
-export PATH="${_mypi_root}/shared/skills/todo/scripts${PATH:+:${PATH}}"
+_list="${_mypi_root}/scripts/path-promoted-skills.txt"
 
-unset _mypi_root
+if [[ ! -f "$_list" ]]; then
+	echo "bootstrap.sh: missing ${_list}" >&2
+	exit 1
+fi
+
+_prefix=""
+while IFS= read -r _line || [[ -n "${_line}" ]]; do
+	_line="${_line#"${_line%%[![:space:]]*}"}"
+	_line="${_line%"${_line##*[![:space:]]}"}"
+	[[ -z "$_line" || "$_line" == \#* ]] && continue
+	if [[ "$_line" == */* || "$_line" == *\\* || "$_line" == *..* ]]; then
+		echo "bootstrap.sh: invalid skill name in path-promoted-skills.txt: ${_line}" >&2
+		exit 1
+	fi
+	_abs="${_mypi_root}/shared/skills/${_line}/scripts"
+	[[ -d "$_abs" ]] || continue
+	_prefix="${_abs}${_prefix:+:${_prefix}}"
+done < "$_list"
+
+if [[ -n "$_prefix" ]]; then
+	export PATH="${_prefix}${PATH:+:${PATH}}"
+fi
+
+unset _mypi_root _list _line _abs _prefix

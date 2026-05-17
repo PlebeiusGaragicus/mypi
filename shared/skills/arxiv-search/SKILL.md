@@ -1,33 +1,31 @@
 ---
 name: arxiv-search
-description: Search and fetch arXiv papers using local scripts. Use for academic paper discovery, arXiv paper lookup, and reading arXiv HTML papers for synthesis or review.
+description: Search and fetch arXiv papers using bare arxiv-search and arxiv-fetch (path-promoted). Use for academic paper discovery, arXiv paper lookup, and reading arXiv HTML papers for synthesis or review.
 disable-model-invocation: false
 ---
 
 # arXiv CLI
 
-Use the scripts in `scripts/` for arXiv search and HTML paper fetches. They use only standard Python plus `pandoc` for HTML-to-text conversion.
+This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`arxiv-search`** and **`arxiv-fetch`** by basename only (do not call `python3` with paths into this skill).
 
-Run commands from this skill directory unless you provide an absolute script path. The scripts print readable text by default, support `--json` where useful, and print specific `Error:` lines to stderr on failure.
+The scripts use only standard Python plus `pandoc` for HTML-to-text conversion. They print readable text by default, support `--json` where useful, and print specific `Error:` lines to stderr on failure.
 
 ## Commands
 
-Always invoke scripts by path from this skill directory:
-
 ```bash
-python3 scripts/arxiv-search.py "ti:rotary AND abs:position AND cat:cs.LG" --num 10
-python3 scripts/arxiv-search.py "abs:\"rotary position embedding\" AND cat:cs.CL" --sort submittedDate
-python3 scripts/arxiv-fetch.py 2104.09864 --max-chars 12000
+arxiv-search "ti:rotary AND abs:position AND cat:cs.LG" --num 10
+arxiv-search "abs:\"rotary position embedding\" AND cat:cs.CL" --sort submittedDate
+arxiv-fetch 2104.09864 --max-chars 12000
 ```
 
 ## Search
 
-Use `arxiv-search.py` first to find candidate papers:
+Use **`arxiv-search`** first to find candidate papers:
 
 ```bash
-python3 scripts/arxiv-search.py "retrieval augmented generation" --num 8
-python3 scripts/arxiv-search.py "ti:transformer AND cat:cs.CL" --sort relevance
-python3 scripts/arxiv-search.py "cat:cs.LG AND abs:diffusion" --sort submittedDate
+arxiv-search "retrieval augmented generation" --num 8
+arxiv-search "ti:transformer AND cat:cs.CL" --sort relevance
+arxiv-search "cat:cs.LG AND abs:diffusion" --sort submittedDate
 ```
 
 Options:
@@ -42,11 +40,11 @@ Avoid naked `all:` plus wide `OR` for ambiguous terms. For short tokens like RoP
 
 ## Fetch
 
-Use `arxiv-fetch.py` after search when one paper is worth reading more deeply:
+Use **`arxiv-fetch`** after search when one paper is worth reading more deeply:
 
 ```bash
-python3 scripts/arxiv-fetch.py 1706.03762 --max-chars 20000
-python3 scripts/arxiv-fetch.py https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt
+arxiv-fetch 1706.03762 --max-chars 20000
+arxiv-fetch https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt
 ```
 
 Options:

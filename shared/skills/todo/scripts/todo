@@ -1,4 +1,33 @@
 #!/usr/bin/env bash
+#
+# todo — manage todo.jsonl task lists (one JSON object per line).
+# Agent-oriented notes: ../SKILL.md in this skill (path-promoted bare `todo` on PATH in Pi).
+#
+# Active file: search $PWD then each parent for todo.jsonl; if none, use ~/.todo/todo.jsonl
+# (directory created as needed).
+#
+# todo file     — create ./todo.jsonl in cwd (prompts [y/N]; -y / --yes for non-interactive;
+#                 refuses if todo.jsonl already exists here). todo which — print resolved path.
+#
+# Each line is one JSON object, for example:
+#   {
+#     "id": 0,
+#     "text": "do the dishes",
+#     "done": false
+#   }
+# id is a non-negative integer. New tasks use the next free id: max(existing id) + 1, or 0
+# when the file is empty.
+#
+# After successful new / edit / finish / unfinish: prints one markdown line like todo list.
+# After del: prints "Deleted: (id) text".
+#
+# Prerequisites:
+#   - bash
+#   - jq
+#   - nano (or another editor via VISUAL / EDITOR) for todo edit <id> without inline text
+#
+# Design: https://PlebeiusGaragicus.github.io/dot-pi/design/todo-cli/
+#
 set -euo pipefail
 
 TODO_VERSION="0.1.0"

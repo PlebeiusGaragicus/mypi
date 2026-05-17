@@ -1,20 +1,101 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import path from "node:path";
 import process from "node:process";
-import {
-	basicAuthHeaders,
-	readOption,
-	requireNtfyConfig,
-} from "./ntfy-common.js";
+
+function findDotPiOverlay() {
+	return process.env.DOT_PI_OVERLAY || path.join(process.env.HOME || "", ".pi", "dot-pi");
+}
+
+function overlayFirstFile(...names) {
+	const overlay = findDotPiOverlay();
+	for (const name of names) {
+		const p = path.join(overlay, name);
+		if (fs.existsSync(p)) return p;
+	}
+	return path.join(overlay, names[0]);
+}
+
+/** Parses KEY=value lines; supports # comments and blank lines. */
+function parseEnvFile(envPath) {
+	const out = {};
+	if (!fs.existsSync(envPath)) return out;
+
+	const content = fs.readFileSync(envPath, "utf8");
+	for (const line of content.split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed || trimmed.startsWith("#")) continue;
+
+		const eq = trimmed.indexOf("=");
+		if (eq <= 0) continue;
+
+		const key = trimmed.slice(0, eq).trim();
+		let value = trimmed.slice(eq + 1).trim();
+		if (
+			(value.startsWith('"') && value.endsWith('"')) ||
+			(value.startsWith("'") && value.endsWith("'"))
+		) {
+			value = value.slice(1, -1);
+		}
+		out[key] = value;
+	}
+	return out;
+}
+
+function normalizeBaseUrl(url) {
+	if (!url) return "";
+	return url.trim().replace(/\/+$/, "");
+}
+
+function loadNtfyConfig() {
+	const filePath = overlayFirstFile("env.ntfy");
+	const fileVars = parseEnvFile(filePath);
+
+	function pick(key) {
+		const envVal = process.env[key]?.trim();
+		if (envVal && envVal !== `$${key}`) return envVal;
+		return fileVars[key]?.trim() ?? "";
+	}
+
+	return {
+		baseUrl: normalizeBaseUrl(pick("NTFY_BASE_URL")),
+		user: pick("NTFY_USER"),
+		password: pick("NTFY_PASSWORD"),
+	};
+}
+
+function requireNtfyConfig() {
+	const config = loadNtfyConfig();
+	if (!config.baseUrl) {
+		console.error("Error: ntfy is not configured.");
+		console.error("Configure with: dotpi keys   (or /api-keys in pi)");
+		process.exit(1);
+	}
+	return config;
+}
+
+function basicAuthHeaders(config) {
+	if (!config.user && !config.password) return {};
+	const token = Buffer.from(`${config.user}:${config.password}`, "utf8").toString("base64");
+	return { Authorization: `Basic ${token}` };
+}
+
+function readOption(args, index, optionName) {
+	const value = args[index + 1];
+	if (!value || value.startsWith("--")) {
+		throw new Error(`Missing value for ${optionName}`);
+	}
+	return value;
+}
 
 const DEFAULT_TOPIC = "bot";
 
 const args = process.argv.slice(2);
 
 function usage() {
-	console.log("Usage: ntfy-send.js [options] <message...>");
-	console.log("       echo message | ntfy-send.js [options]");
+	console.log("Usage: ntfy-send [options] <message...>");
+	console.log("       echo message | ntfy-send [options]");
 	console.log("");
 	console.log("Options:");
 	console.log(`  --topic NAME    ntfy topic (default: ${DEFAULT_TOPIC})`);

@@ -20,8 +20,8 @@ def parse_args() -> argparse.Namespace:
         description="Fetch arXiv HTML and convert it to plain text with pandoc.",
         epilog=(
             "Examples:\n"
-            "  arxiv-fetch.py 1706.03762 --max-chars 20000\n"
-            "  arxiv-fetch.py https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt"
+            "  arxiv-fetch 1706.03762 --max-chars 20000\n"
+            "  arxiv-fetch https://arxiv.org/abs/2104.09864 --output /tmp/arxiv-2104.09864.txt"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

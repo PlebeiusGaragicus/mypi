@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # Todo CLI
 
+This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Use the bare command **`todo`** (not a path into this skill folder).
+
 `todo` is a simple cli utility used to manage shared todo lists with the user.  Todo lists are project-scoped `todo.jsonl` files not meant to be viewed or edited except via the `todo` utility.
 
 Before using, always run bare `todo` to see the built-in usage:

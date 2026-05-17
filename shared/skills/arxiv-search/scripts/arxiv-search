@@ -21,9 +21,9 @@ def parse_args() -> argparse.Namespace:
         description="Search arXiv via the public Atom API.",
         epilog=(
             'Examples:\n'
-            '  arxiv-search.py "retrieval augmented generation" --num 8\n'
-            '  arxiv-search.py "ti:transformer AND cat:cs.CL" --sort relevance\n'
-            '  arxiv-search.py "cat:cs.LG AND abs:diffusion" --sort submittedDate'
+            '  arxiv-search "retrieval augmented generation" --num 8\n'
+            '  arxiv-search "ti:transformer AND cat:cs.CL" --sort relevance\n'
+            '  arxiv-search "cat:cs.LG AND abs:diffusion" --sort submittedDate'
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -160,7 +160,7 @@ def print_readable(query: str, sort: str, results: list[dict]) -> None:
                 print(f"   {line}")
         print("")
 
-    print("Tip: Use arxiv-fetch.py with a promising arXiv id when you need full paper text.")
+    print("Tip: Use arxiv-fetch with a promising arXiv id when you need full paper text.")
 
 
 def main() -> int:

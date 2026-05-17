@@ -1,6 +1,6 @@
 ---
 name: ntfy
-description: Send push notifications via ntfy using scripts/ntfy-send.js (default topic bot). Override with --topic when the user names another topic.
+description: Send push notifications via ntfy using bare ntfy-send (default topic bot). Override with --topic when the user names another topic.
 disable-model-invocation: false
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 Use when the user wants **push notifications** on phone or desktop via [ntfy](https://ntfy.sh/).
 
-**Run `node scripts/ntfy-send.js` from this skill directory** with the message text. For a quick test, a single quoted string is enough. Configure ntfy with **`dotpi keys`** or **`/api-keys`** in pi if notifications fail with a configuration error on stderr.
+This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`ntfy-send`** by basename with the message text. For a quick test, a single quoted string is enough. If notifications fail with a configuration error on stderr, ensure ntfy is configured via **`dotpi keys`** or **`/api-keys`** in pi.
 
 ## Default topic (`bot`)
 
@@ -17,10 +17,10 @@ Notifications use topic **`bot`** unless you pass **`--topic <name>`** (when the
 ## Commands
 
 ```bash
-node scripts/ntfy-send.js "Hello from the agent"
-node scripts/ntfy-send.js "Deploy OK" --title "Production" --priority 5 --tags warning,deploy
-node scripts/ntfy-send.js --topic alerts "Pager message"
-echo "Build finished" | node scripts/ntfy-send.js
+ntfy-send "Hello from the agent"
+ntfy-send "Deploy OK" --title "Production" --priority 5 --tags warning,deploy
+ntfy-send --topic alerts "Pager message"
+echo "Build finished" | ntfy-send
 ```
 
 The message is all remaining arguments (or stdin when piped).
