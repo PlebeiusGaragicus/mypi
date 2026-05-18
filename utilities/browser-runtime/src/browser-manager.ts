@@ -18,7 +18,10 @@
 import { chromium, type Browser, type BrowserContext, type BrowserContextOptions, type Page, type Locator, type Cookie } from 'playwright';
 import { addConsoleEntry, addNetworkEntry, addDialogEntry, networkBuffer, type DialogEntry } from './buffers';
 import { validateNavigationUrl } from './url-validation';
+import { resolveConfig } from './config';
 import { TabSession, type RefEntry } from './tab-session';
+
+const browseConfig = resolveConfig();
 
 export type { RefEntry };
 
@@ -127,28 +130,14 @@ export class BrowserManager {
   }
 
   /**
-   * Find the gstack Chrome extension directory.
-   * Checks: repo root /extension, global install, dev install.
+   * Optional Chrome extension directory (future sidebar/refs UI).
    */
   private findExtensionPath(): string | null {
     const fs = require('fs');
     const path = require('path');
     const candidates = [
-      // Explicit override via env var (used by GStack Browser.app bundle)
       process.env.BROWSE_EXTENSIONS_DIR || '',
-      // Relative to this source file (dev mode: browse/src/ -> ../../extension)
-      path.resolve(__dirname, '..', '..', 'extension'),
-      // Global gstack install
-      path.join(process.env.HOME || '', '.claude', 'skills', 'gstack', 'extension'),
-      // Git repo root (detected via BROWSE_STATE_FILE location)
-      (() => {
-        const stateFile = process.env.BROWSE_STATE_FILE || '';
-        if (stateFile) {
-          const repoRoot = path.resolve(path.dirname(stateFile), '..');
-          return path.join(repoRoot, '.claude', 'skills', 'gstack', 'extension');
-        }
-        return '';
-      })(),
+      path.resolve(import.meta.dir, '..', 'extension'),
     ].filter(Boolean);
 
     for (const candidate of candidates) {
@@ -202,10 +191,7 @@ export class BrowserManager {
 
     this.browser = await chromium.launch({
       headless: useHeadless,
-      // On Windows, Chromium's sandbox fails when the server is spawned through
-      // the Bun→Node process chain (GitHub #276). Disable it — local daemon
-      // browsing user-specified URLs has marginal sandbox benefit.
-      chromiumSandbox: process.platform !== 'win32',
+      chromiumSandbox: true,
       ...(launchArgs.length > 0 ? { args: launchArgs } : {}),
     });
 
@@ -266,9 +252,8 @@ export class BrowserManager {
       if (authToken) {
         const fs = require('fs');
         const path = require('path');
-        const gstackDir = path.join(process.env.HOME || '/tmp', '.gstack');
-        fs.mkdirSync(gstackDir, { recursive: true });
-        const authFile = path.join(gstackDir, '.auth.json');
+        fs.mkdirSync(browseConfig.stateDir, { recursive: true });
+        const authFile = browseConfig.authFile;
         try {
           fs.writeFileSync(authFile, JSON.stringify({ token: authToken, port: this.serverPort || 34567 }), { mode: 0o600 });
         } catch (err: any) {
@@ -283,73 +268,27 @@ export class BrowserManager {
     // so we use Playwright's bundled Chromium which reliably loads extensions.
     const fs = require('fs');
     const path = require('path');
-    const userDataDir = path.join(process.env.HOME || '/tmp', '.gstack', 'chromium-profile');
+    const userDataDir = browseConfig.chromiumProfileDir;
     fs.mkdirSync(userDataDir, { recursive: true });
 
-    // Support custom Chromium binary via GSTACK_CHROMIUM_PATH env var.
-    // Used by GStack Browser.app to point at the bundled Chromium.
-    const executablePath = process.env.GSTACK_CHROMIUM_PATH || undefined;
+    const executablePath = process.env.BROWSE_CHROMIUM_PATH || undefined;
 
-    // Rebrand Chromium → GStack Browser in macOS menu bar / Dock / Cmd+Tab.
-    // Patch the Chromium .app's Info.plist so macOS shows our name.
-    // This works for both dev mode (system Playwright cache) and .app bundle.
-    const chromePath = executablePath || chromium.executablePath();
-    try {
-      // Walk up from binary to the .app's Info.plist
-      // e.g. .../Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing
-      //   → .../Google Chrome for Testing.app/Contents/Info.plist
-      const chromeContentsDir = path.resolve(path.dirname(chromePath), '..');
-      const chromePlist = path.join(chromeContentsDir, 'Info.plist');
-      if (fs.existsSync(chromePlist)) {
-        const plistContent = fs.readFileSync(chromePlist, 'utf-8');
-        if (plistContent.includes('Google Chrome for Testing')) {
-          const patched = plistContent
-            .replace(/Google Chrome for Testing/g, 'GStack Browser');
-          fs.writeFileSync(chromePlist, patched);
-        }
-        // Replace Chromium's Dock icon with ours (Chromium's process owns the Dock icon)
-        const iconCandidates = [
-          path.join(__dirname, '..', '..', 'scripts', 'app', 'icon.icns'),       // repo dev mode
-          path.join(process.env.HOME || '', '.claude', 'skills', 'gstack', 'scripts', 'app', 'icon.icns'), // global install
-        ];
-        const iconSrc = iconCandidates.find(p => fs.existsSync(p));
-        if (iconSrc) {
-          const chromeResources = path.join(chromeContentsDir, 'Resources');
-          // Read original icon name from plist
-          const iconMatch = plistContent.match(/<key>CFBundleIconFile<\/key>\s*<string>([^<]+)<\/string>/);
-          let origIcon = iconMatch ? iconMatch[1] : 'app';
-          if (!origIcon.endsWith('.icns')) origIcon += '.icns';
-          const destIcon = path.join(chromeResources, origIcon);
-          try {
-            fs.copyFileSync(iconSrc, destIcon);
-          } catch (err: any) {
-            if (err?.code !== 'ENOENT' && err?.code !== 'EACCES') throw err;
-          }
-        }
-      }
-    } catch (err: any) {
-      // Non-fatal: app name stays as Chrome for Testing (ENOENT/EACCES expected)
-      if (err?.code !== 'ENOENT' && err?.code !== 'EACCES') throw err;
-    }
-
-    // Build custom user agent: keep Chrome version for site compatibility,
-    // but replace "Chrome for Testing" branding with "GStackBrowser"
     let customUA: string | undefined;
     if (!this.customUserAgent) {
-      // Detect Chrome version from the Chromium binary
       const chromePath = executablePath || chromium.executablePath();
       try {
         const versionProc = Bun.spawnSync([chromePath, '--version'], {
           stdout: 'pipe', stderr: 'pipe', timeout: 5000,
         });
         const versionOutput = versionProc.stdout.toString().trim();
-        // Output like: "Google Chrome for Testing 145.0.6422.0" or "Chromium 145.0.6422.0"
         const versionMatch = versionOutput.match(/(\d+\.\d+\.\d+\.\d+)/);
         const chromeVersion = versionMatch ? versionMatch[1] : '131.0.0.0';
-        customUA = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36 GStackBrowser`;
+        const platformUa = process.platform === 'darwin'
+          ? `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`
+          : `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+        customUA = `${platformUa} BrowserControl`;
       } catch {
-        // Fallback: generic modern Chrome UA
-        customUA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 GStackBrowser';
+        customUA = undefined;
       }
     }
 
@@ -1158,7 +1097,7 @@ export class BrowserManager {
         console.log('[browse] Handoff: extension not found — headed mode without side panel');
       }
 
-      const userDataDir = path.join(process.env.HOME || '/tmp', '.gstack', 'chromium-profile');
+      const userDataDir = browseConfig.chromiumProfileDir;
       fs.mkdirSync(userDataDir, { recursive: true });
 
       newContext = await chromium.launchPersistentContext(userDataDir, {

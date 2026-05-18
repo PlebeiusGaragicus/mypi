@@ -1,6 +1,8 @@
 /**
- * browser-control server — persistent headless Chromium (Tier 1)
+ * browser-control server — persistent Chromium daemon (headless or headed).
  */
+
+import { assertSupportedPlatform } from './platform';
 
 import { BrowserManager } from './browser-manager';
 import { handleReadCommand } from './read-commands';
@@ -29,6 +31,7 @@ import { initRegistry, validateScopedToken, type TokenInfo } from './token-regis
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { initAuditLog, writeAuditEntry } from './audit';
 import { safeUnlink, safeUnlinkQuiet } from './error-handling';
+import { detectChallenge, appendChallengeBanner } from './challenge-detection';
 import { consoleBuffer, networkBuffer, dialogBuffer } from './buffers';
 import * as fs from 'fs';
 import * as net from 'net';
@@ -209,6 +212,15 @@ async function handleCommandInternal(
       }
     }
 
+    if (command === 'text' || command === 'snapshot') {
+      try {
+        const challenge = await detectChallenge(browserManager.getPage());
+        if (challenge.detected && challenge.kind) {
+          result = appendChallengeBanner(result, challenge.kind, browserManager.getCurrentUrl());
+        }
+      } catch { /* page may be closed */ }
+    }
+
     writeAuditEntry({
       ts: new Date().toISOString(),
       cmd: command,
@@ -307,14 +319,22 @@ async function shutdown(exitCode = 0): Promise<void> {
 }
 
 async function start(): Promise<void> {
+  assertSupportedPlatform();
+
   safeUnlink(CONSOLE_LOG_PATH);
   safeUnlink(NETWORK_LOG_PATH);
   safeUnlink(DIALOG_LOG_PATH);
 
   const port = await findPort();
   const skipBrowser = process.env.BROWSE_HEADLESS_SKIP === '1';
+  const headed = process.env.BROWSE_HEADED === '1';
   if (!skipBrowser) {
-    await browserManager.launch();
+    if (headed) {
+      await browserManager.launchHeaded(AUTH_TOKEN);
+      console.log('[browse] Launched headed Chromium');
+    } else {
+      await browserManager.launch();
+    }
   }
 
   const startTime = Date.now();
@@ -364,7 +384,7 @@ async function start(): Promise<void> {
     startedAt: new Date().toISOString(),
     serverPath: import.meta.path,
     binaryVersion: process.env.BROWSE_BINARY_VERSION || readVersionHash() || 'dev',
-    mode: 'launched' as const,
+    mode: (headed ? 'headed' : 'launched') as 'headed' | 'launched',
   };
   fs.writeFileSync(config.stateFile, JSON.stringify(state, null, 2), { mode: 0o600 });
   console.log(`[browse] Server listening on http://127.0.0.1:${server.port}`);

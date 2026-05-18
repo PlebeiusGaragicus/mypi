@@ -1,5 +1,5 @@
 /**
- * Command registry — Tier 1 browser-control commands.
+ * Command registry — Tier 1 + Tier 2 browser-control commands.
  */
 
 export const READ_COMMANDS = new Set([
@@ -7,14 +7,16 @@ export const READ_COMMANDS = new Set([
   'js', 'eval', 'css', 'attrs',
   'console', 'network', 'cookies', 'storage', 'perf',
   'dialog', 'is',
+  'media', 'data',
 ]);
 
 export const WRITE_COMMANDS = new Set([
   'goto', 'back', 'forward', 'reload',
   'load-html',
   'click', 'fill', 'select', 'hover', 'type', 'press', 'scroll', 'wait',
-  'viewport', 'cookie', 'cookie-import', 'header', 'useragent',
+  'viewport', 'cookie', 'cookie-import', 'cookie-import-browser', 'header', 'useragent',
   'upload', 'dialog-accept', 'dialog-dismiss',
+  'download', 'scrape', 'archive', 'cleanup', 'prettyscreenshot',
 ]);
 
 export const META_COMMANDS = new Set([
@@ -22,6 +24,9 @@ export const META_COMMANDS = new Set([
   'status', 'stop', 'restart',
   'screenshot', 'responsive',
   'chain', 'url', 'snapshot',
+  'pdf', 'diff',
+  'handoff', 'resume', 'connect', 'disconnect', 'focus',
+  'state', 'frame', 'ux-audit',
 ]);
 
 export const ALL_COMMANDS = new Set([...READ_COMMANDS, ...WRITE_COMMANDS, ...META_COMMANDS]);
@@ -56,6 +61,8 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'links': { category: 'Reading', description: 'All links' },
   'forms': { category: 'Reading', description: 'Form fields as JSON' },
   'accessibility': { category: 'Reading', description: 'Full ARIA tree' },
+  'media': { category: 'Reading', description: 'Media elements on page', usage: 'media [--images|--videos|--audio] [selector]' },
+  'data': { category: 'Reading', description: 'Structured page metadata', usage: 'data [--jsonld|--og|--meta|--twitter]' },
   'js': { category: 'Inspection', description: 'Run JavaScript expression', usage: 'js <expr>' },
   'eval': { category: 'Inspection', description: 'Run JavaScript from file', usage: 'eval <file>' },
   'css': { category: 'Inspection', description: 'Computed CSS value', usage: 'css <sel> <prop>' },
@@ -79,12 +86,20 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'viewport': { category: 'Interaction', description: 'Set viewport and optional scale', usage: 'viewport [<WxH>] [--scale <n>]' },
   'cookie': { category: 'Interaction', description: 'Set cookie', usage: 'cookie <name>=<value>' },
   'cookie-import': { category: 'Interaction', description: 'Import cookies from JSON file', usage: 'cookie-import <json>' },
+  'cookie-import-browser': { category: 'Interaction', description: 'Import cookies from installed Chromium browser', usage: 'cookie-import-browser [browser] --domain <d> [--profile p]' },
   'header': { category: 'Interaction', description: 'Set request header', usage: 'header <name>:<value>' },
   'useragent': { category: 'Interaction', description: 'Set user agent', usage: 'useragent <string>' },
   'dialog-accept': { category: 'Interaction', description: 'Auto-accept next dialog', usage: 'dialog-accept [text]' },
   'dialog-dismiss': { category: 'Interaction', description: 'Auto-dismiss next dialog' },
+  'download': { category: 'Extraction', description: 'Download URL or media ref', usage: 'download <url|@ref> [path] [--base64]' },
+  'scrape': { category: 'Extraction', description: 'Bulk download page media', usage: 'scrape <images|videos|media> [--dir path] [--limit N]' },
+  'archive': { category: 'Extraction', description: 'Save page as MHTML', usage: 'archive [path]' },
+  'cleanup': { category: 'Interaction', description: 'Hide ads, cookie banners, clutter', usage: 'cleanup [--ads] [--cookies] [--all]' },
+  'prettyscreenshot': { category: 'Visual', description: 'Clean screenshot with optional cleanup', usage: 'prettyscreenshot [--cleanup] [--scroll-to sel] [path]' },
   'screenshot': { category: 'Visual', description: 'Save screenshot', usage: 'screenshot [path]' },
-  'responsive': { category: 'Visual', description: 'Mobile/tablet/desktop screenshots', usage: 'responsive [prefix]' },
+  'responsive': { category: 'Visual', description: 'Multi-viewport screenshots', usage: 'responsive [prefix]' },
+  'pdf': { category: 'Visual', description: 'Save page as PDF', usage: 'pdf [path] [--format A4]' },
+  'diff': { category: 'Compare', description: 'Diff text of two URLs', usage: 'diff <url1> <url2>' },
   'tabs': { category: 'Tabs', description: 'List open tabs' },
   'tab': { category: 'Tabs', description: 'Switch to tab', usage: 'tab <id>' },
   'newtab': { category: 'Tabs', description: 'Open new tab', usage: 'newtab [url]' },
@@ -92,6 +107,14 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'status': { category: 'Server', description: 'Health check' },
   'stop': { category: 'Server', description: 'Shutdown server' },
   'restart': { category: 'Server', description: 'Restart server' },
+  'handoff': { category: 'Server', description: 'Open visible browser for user takeover', usage: 'handoff [message]' },
+  'resume': { category: 'Server', description: 'Resume automation after handoff' },
+  'connect': { category: 'Server', description: 'Start headed browser (CLI only)' },
+  'disconnect': { category: 'Server', description: 'Disconnect headed browser' },
+  'focus': { category: 'Server', description: 'Bring browser window to foreground', usage: 'focus [@ref]' },
+  'state': { category: 'Server', description: 'Save or load browser state', usage: 'state save|load <name>' },
+  'frame': { category: 'Server', description: 'Switch iframe context', usage: 'frame <sel|main|--name n|--url pat>' },
+  'ux-audit': { category: 'Reading', description: 'Structured UX audit JSON' },
   'snapshot': { category: 'Snapshot', description: 'Accessibility tree with @refs', usage: 'snapshot [flags]' },
   'chain': { category: 'Meta', description: 'Run commands from JSON stdin' },
 };
@@ -117,23 +140,9 @@ export function canonicalizeCommand(cmd: string): string {
 
 export const NEW_IN_VERSION: Record<string, string> = {
   'load-html': '0.1.0',
+  'handoff': '0.2.0',
+  'pdf': '0.2.0',
 };
-
-function levenshtein(a: string, b: string): number {
-  if (a === b) return 0;
-  if (a.length === 0) return b.length;
-  if (b.length === 0) return a.length;
-  const m: number[][] = [];
-  for (let i = 0; i <= a.length; i++) m.push([i, ...Array(b.length).fill(0)]);
-  for (let j = 0; j <= b.length; j++) m[0][j] = j;
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      m[i][j] = Math.min(m[i - 1][j] + 1, m[i][j - 1] + 1, m[i - 1][j - 1] + cost);
-    }
-  }
-  return m[a.length][b.length];
-}
 
 export function buildUnknownCommandError(
   command: string,
@@ -159,4 +168,20 @@ export function buildUnknownCommandError(
     msg += ` This command was added in browser-runtime v${newInVersion[command]}.`;
   }
   return msg;
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const m: number[][] = [];
+  for (let i = 0; i <= a.length; i++) m.push([i, ...Array(b.length).fill(0)]);
+  for (let j = 0; j <= b.length; j++) m[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      m[i][j] = Math.min(m[i - 1][j] + 1, m[i][j - 1] + 1, m[i - 1][j - 1] + cost);
+    }
+  }
+  return m[a.length][b.length];
 }

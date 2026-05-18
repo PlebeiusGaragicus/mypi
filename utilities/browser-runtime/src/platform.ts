@@ -1,17 +1,22 @@
 /**
- * Cross-platform constants for gstack browse.
- *
- * On macOS/Linux: TEMP_DIR = '/tmp', path.sep = '/'  — identical to hardcoded values.
- * On Windows: TEMP_DIR = os.tmpdir(), path.sep = '\\' — correct Windows behavior.
+ * Platform constants — macOS and Linux only.
  */
 
-import * as os from 'os';
 import * as path from 'path';
 
-export const IS_WINDOWS = process.platform === 'win32';
-export const TEMP_DIR = IS_WINDOWS ? os.tmpdir() : '/tmp';
+export const TEMP_DIR = '/tmp';
 
-/** Check if resolvedPath is within dir, using platform-aware separators. */
+const SUPPORTED = new Set(['darwin', 'linux']);
+
+export function assertSupportedPlatform(): void {
+  if (!SUPPORTED.has(process.platform)) {
+    throw new Error(
+      `browser-control supports macOS and Linux only (got ${process.platform}).`,
+    );
+  }
+}
+
+/** Check if resolvedPath is within dir. */
 export function isPathWithin(resolvedPath: string, dir: string): boolean {
   return resolvedPath === dir || resolvedPath.startsWith(dir + path.sep);
 }

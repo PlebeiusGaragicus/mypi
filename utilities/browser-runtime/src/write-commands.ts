@@ -8,12 +8,121 @@
 import type { TabSession } from './tab-session';
 import type { BrowserManager } from './browser-manager';
 import { validateNavigationUrl } from './url-validation';
+import { detectChallengeOnPage, appendChallengeBanner } from './challenge-detection';
 import { validateOutputPath, validateReadPath } from './path-security';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { SetContentWaitUntil } from './tab-session';
 import { TEMP_DIR, isPathWithin } from './platform';
 import { SAFE_DIRECTORIES } from './path-security';
+/**
+ * Aggressive page cleanup selectors and heuristics.
+ * Goal: make the page readable and clean while keeping it recognizable.
+ * Inspired by uBlock Origin filter lists, Readability.js, and reader mode heuristics.
+ */
+const CLEANUP_SELECTORS = {
+  ads: [
+    // Google Ads
+    'ins.adsbygoogle', '[id^="google_ads"]', '[id^="div-gpt-ad"]',
+    'iframe[src*="doubleclick"]', 'iframe[src*="googlesyndication"]',
+    '[data-google-query-id]', '.google-auto-placed',
+    // Generic ad patterns (uBlock Origin common filters)
+    '[class*="ad-banner"]', '[class*="ad-wrapper"]', '[class*="ad-container"]',
+    '[class*="ad-slot"]', '[class*="ad-unit"]', '[class*="ad-zone"]',
+    '[class*="ad-placement"]', '[class*="ad-holder"]', '[class*="ad-block"]',
+    '[class*="adbox"]', '[class*="adunit"]', '[class*="adwrap"]',
+    '[id*="ad-banner"]', '[id*="ad-wrapper"]', '[id*="ad-container"]',
+    '[id*="ad-slot"]', '[id*="ad_banner"]', '[id*="ad_container"]',
+    '[data-ad]', '[data-ad-slot]', '[data-ad-unit]', '[data-adunit]',
+    '[class*="sponsored"]', '[class*="Sponsored"]',
+    '.ad', '.ads', '.advert', '.advertisement',
+    '#ad', '#ads', '#advert', '#advertisement',
+    // Common ad network iframes
+    'iframe[src*="amazon-adsystem"]', 'iframe[src*="outbrain"]',
+    'iframe[src*="taboola"]', 'iframe[src*="criteo"]',
+    'iframe[src*="adsafeprotected"]', 'iframe[src*="moatads"]',
+    // Promoted/sponsored content
+    '[class*="promoted"]', '[class*="Promoted"]',
+    '[data-testid*="promo"]', '[class*="native-ad"]',
+    // Empty ad placeholders (divs with only ad classes, no real content)
+    'aside[class*="ad"]', 'section[class*="ad-"]',
+  ],
+  cookies: [
+    // Cookie consent frameworks
+    '[class*="cookie-consent"]', '[class*="cookie-banner"]', '[class*="cookie-notice"]',
+    '[id*="cookie-consent"]', '[id*="cookie-banner"]', '[id*="cookie-notice"]',
+    '[class*="consent-banner"]', '[class*="consent-modal"]', '[class*="consent-wall"]',
+    '[class*="gdpr"]', '[id*="gdpr"]', '[class*="GDPR"]',
+    '[class*="CookieConsent"]', '[id*="CookieConsent"]',
+    // OneTrust (very common)
+    '#onetrust-consent-sdk', '.onetrust-pc-dark-filter', '#onetrust-banner-sdk',
+    // Cookiebot
+    '#CybotCookiebotDialog', '#CybotCookiebotDialogBodyUnderlay',
+    // TrustArc / TRUSTe
+    '#truste-consent-track', '.truste_overlay', '.truste_box_overlay',
+    // Quantcast
+    '.qc-cmp2-container', '#qc-cmp2-main',
+    // Generic patterns
+    '[class*="cc-banner"]', '[class*="cc-window"]', '[class*="cc-overlay"]',
+    '[class*="privacy-banner"]', '[class*="privacy-notice"]',
+    '[id*="privacy-banner"]', '[id*="privacy-notice"]',
+    '[class*="accept-cookies"]', '[id*="accept-cookies"]',
+  ],
+  overlays: [
+    // Paywall / subscription overlays
+    '[class*="paywall"]', '[class*="Paywall"]', '[id*="paywall"]',
+    '[class*="subscribe-wall"]', '[class*="subscription-wall"]',
+    '[class*="meter-wall"]', '[class*="regwall"]', '[class*="reg-wall"]',
+    // Newsletter / signup popups
+    '[class*="newsletter-popup"]', '[class*="newsletter-modal"]',
+    '[class*="signup-modal"]', '[class*="signup-popup"]',
+    '[class*="email-capture"]', '[class*="lead-capture"]',
+    '[class*="popup-modal"]', '[class*="modal-overlay"]',
+    // Interstitials
+    '[class*="interstitial"]', '[id*="interstitial"]',
+    // Push notification prompts
+    '[class*="push-notification"]', '[class*="notification-prompt"]',
+    '[class*="web-push"]',
+    // Survey / feedback popups
+    '[class*="survey-"]', '[class*="feedback-modal"]',
+    '[id*="survey-"]', '[class*="nps-"]',
+    // App download banners
+    '[class*="app-banner"]', '[class*="smart-banner"]', '[class*="app-download"]',
+    '[id*="branch-banner"]', '.smartbanner',
+    // Cross-promotion / "follow us" / "preferred source" widgets
+    '[class*="promo-banner"]', '[class*="cross-promo"]', '[class*="partner-promo"]',
+    '[class*="preferred-source"]', '[class*="google-promo"]',
+  ],
+  clutter: [
+    // Audio/podcast player widgets (not part of the article text)
+    '[class*="audio-player"]', '[class*="podcast-player"]', '[class*="listen-widget"]',
+    '[class*="everlit"]', '[class*="Everlit"]',
+    'audio', // bare audio elements
+    // Sidebar games/puzzles widgets
+    '[class*="puzzle"]', '[class*="daily-game"]', '[class*="games-widget"]',
+    '[class*="crossword-promo"]', '[class*="mini-game"]',
+    // "Most Popular" / "Trending" sidebar recirculation (not the top nav trending bar)
+    'aside [class*="most-popular"]', 'aside [class*="trending"]',
+    'aside [class*="most-read"]', 'aside [class*="recommended"]',
+    // Related articles / recirculation at bottom
+    '[class*="related-articles"]', '[class*="more-stories"]',
+    '[class*="recirculation"]', '[class*="taboola"]', '[class*="outbrain"]',
+    // Hearst-specific (SF Chronicle, etc.)
+    '[class*="nativo"]', '[data-tb-region]',
+  ],
+  sticky: [
+    // Handled via JavaScript evaluation, not pure selectors
+  ],
+  social: [
+    '[class*="social-share"]', '[class*="share-buttons"]', '[class*="share-bar"]',
+    '[class*="social-widget"]', '[class*="social-icons"]', '[class*="share-tools"]',
+    'iframe[src*="facebook.com/plugins"]', 'iframe[src*="platform.twitter"]',
+    '[class*="fb-like"]', '[class*="tweet-button"]',
+    '[class*="addthis"]', '[class*="sharethis"]',
+    // Follow prompts
+    '[class*="follow-us"]', '[class*="social-follow"]',
+  ],
+};
 
 export async function handleWriteCommand(
   command: string,
@@ -37,7 +146,12 @@ export async function handleWriteCommand(
       const normalizedUrl = await validateNavigationUrl(url);
       const response = await page.goto(normalizedUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
       const status = response?.status() || 'unknown';
-      return `Navigated to ${normalizedUrl} (${status})`;
+      let result = `Navigated to ${normalizedUrl} (${status})`;
+      const challenge = await detectChallengeOnPage(page, response);
+      if (challenge.detected && challenge.kind) {
+        result = appendChallengeBanner(result, challenge.kind, page.url());
+      }
+      return result;
     }
 
     case 'back': {
@@ -567,6 +681,625 @@ export async function handleWriteCommand(
       const importedDomains = [...new Set(cookies.map((c: any) => c.domain).filter(Boolean))];
       if (importedDomains.length > 0) bm.trackCookieImportDomains(importedDomains);
       return `Loaded ${cookies.length} cookies from ${filePath}`;
+    }
+
+
+    case 'cookie-import-browser': {
+      const { importCookies, listDomains, listSupportedBrowserNames } = await import('./cookie-import-browser');
+      const browserArg = args[0]?.startsWith('--') ? undefined : args[0];
+      const domainIdx = args.indexOf('--domain');
+      const profileIdx = args.indexOf('--profile');
+      const hasAll = args.includes('--all');
+      const profile = (profileIdx !== -1 && profileIdx + 1 < args.length) ? args[profileIdx + 1] : 'Default';
+
+      if (domainIdx !== -1 && domainIdx + 1 < args.length) {
+        const domain = args[domainIdx + 1];
+        const pageHostname = new URL(page.url()).hostname;
+        const normalizedDomain = domain.startsWith('.') ? domain.slice(1) : domain;
+        if (normalizedDomain !== pageHostname && !pageHostname.endsWith('.' + normalizedDomain)) {
+          throw new Error(`--domain "${domain}" does not match current page domain "${pageHostname}". Navigate to the target site first.`);
+        }
+        const browser = browserArg || 'chrome';
+        const result = await importCookies(browser, [domain], profile);
+        if (result.cookies.length > 0) {
+          await page.context().addCookies(result.cookies);
+          bm.trackCookieImportDomains([domain]);
+        }
+        const msg = [`Imported ${result.count} cookies for ${domain} from ${browser}`];
+        if (result.failed > 0) msg.push(`(${result.failed} failed to decrypt)`);
+        return msg.join(' ');
+      }
+
+      if (hasAll) {
+        const browser = browserArg || 'chrome';
+        const { domains } = listDomains(browser, profile);
+        const allDomainNames = domains.map((d: { domain: string }) => d.domain);
+        if (allDomainNames.length === 0) {
+          return `No cookies found in ${browser} (profile: ${profile})`;
+        }
+        const result = await importCookies(browser, allDomainNames, profile);
+        if (result.cookies.length > 0) {
+          await page.context().addCookies(result.cookies);
+          bm.trackCookieImportDomains(allDomainNames);
+        }
+        return `Imported ${result.count} cookies across ${Object.keys(result.domainCounts).length} domains from ${browser}`;
+      }
+
+      throw new Error(
+        `Usage: cookie-import-browser [browser] --domain <domain> [--profile <name>]\n` +
+        `       cookie-import-browser [browser] --all [--profile <name>]\n` +
+        `Supported browsers: ${listSupportedBrowserNames().join(', ')}`,
+      );
+    }
+    case 'cleanup': {
+      // Parse flags
+      let doAds = false, doCookies = false, doSticky = false, doSocial = false;
+      let doOverlays = false, doClutter = false;
+      let doAll = false;
+
+      // Default to --all if no args (most common use case from sidebar button)
+      if (args.length === 0) {
+        doAll = true;
+      }
+
+      for (const arg of args) {
+        switch (arg) {
+          case '--ads': doAds = true; break;
+          case '--cookies': doCookies = true; break;
+          case '--sticky': doSticky = true; break;
+          case '--social': doSocial = true; break;
+          case '--overlays': doOverlays = true; break;
+          case '--clutter': doClutter = true; break;
+          case '--all': doAll = true; break;
+          default:
+            throw new Error(`Unknown cleanup flag: ${arg}. Use: --ads, --cookies, --sticky, --social, --overlays, --clutter, --all`);
+        }
+      }
+
+      if (doAll) {
+        doAds = doCookies = doSticky = doSocial = doOverlays = doClutter = true;
+      }
+
+      const removed: string[] = [];
+
+      // Build selector list for categories to clean
+      const selectors: string[] = [];
+      if (doAds) selectors.push(...CLEANUP_SELECTORS.ads);
+      if (doCookies) selectors.push(...CLEANUP_SELECTORS.cookies);
+      if (doSocial) selectors.push(...CLEANUP_SELECTORS.social);
+      if (doOverlays) selectors.push(...CLEANUP_SELECTORS.overlays);
+      if (doClutter) selectors.push(...CLEANUP_SELECTORS.clutter);
+
+      if (selectors.length > 0) {
+        const count = await page.evaluate((sels: string[]) => {
+          let removed = 0;
+          for (const sel of sels) {
+            try {
+              const els = document.querySelectorAll(sel);
+              els.forEach(el => {
+                (el as HTMLElement).style.setProperty('display', 'none', 'important');
+                removed++;
+              });
+            } catch (err: any) {
+              // querySelectorAll throws DOMException on invalid CSS selectors — skip those
+              if (!(err instanceof DOMException)) throw err;
+            }
+          }
+          return removed;
+        }, selectors);
+        if (count > 0) {
+          if (doAds) removed.push('ads');
+          if (doCookies) removed.push('cookie banners');
+          if (doSocial) removed.push('social widgets');
+          if (doOverlays) removed.push('overlays/popups');
+          if (doClutter) removed.push('clutter');
+        }
+      }
+
+      // Sticky/fixed elements — handled separately with computed style check
+      if (doSticky) {
+        const stickyCount = await page.evaluate(() => {
+          let removed = 0;
+          // Collect all sticky/fixed elements, sort by vertical position
+          const stickyEls: Array<{ el: Element; top: number; width: number; height: number }> = [];
+          const allElements = document.querySelectorAll('*');
+          const viewportWidth = window.innerWidth;
+          for (const el of allElements) {
+            const style = getComputedStyle(el);
+            if (style.position === 'fixed' || style.position === 'sticky') {
+              const rect = el.getBoundingClientRect();
+              stickyEls.push({ el, top: rect.top, width: rect.width, height: rect.height });
+            }
+          }
+          // Sort by vertical position (topmost first)
+          stickyEls.sort((a, b) => a.top - b.top);
+          let preservedTopNav = false;
+          for (const { el, top, width, height } of stickyEls) {
+            const tag = el.tagName.toLowerCase();
+            // Always skip nav/header semantic elements
+            if (tag === 'nav' || tag === 'header') continue;
+            if (el.getAttribute('role') === 'navigation') continue;
+            // Skip the gstack control indicator
+            if ((el as HTMLElement).id === 'gstack-ctrl') continue;
+            // Preserve the FIRST full-width element near the top (site's main nav bar)
+            // This catches divs that act as navbars but aren't semantic <nav> elements
+            if (!preservedTopNav && top <= 50 && width > viewportWidth * 0.8 && height < 120) {
+              preservedTopNav = true;
+              continue;
+            }
+            (el as HTMLElement).style.setProperty('display', 'none', 'important');
+            removed++;
+          }
+          return removed;
+        });
+        if (stickyCount > 0) removed.push(`${stickyCount} sticky/fixed elements`);
+      }
+
+      // Unlock scrolling (many sites lock body scroll when modals are open)
+      const scrollFixed = await page.evaluate(() => {
+        let fixed = 0;
+        // Unlock body and html scroll
+        for (const el of [document.body, document.documentElement]) {
+          if (!el) continue;
+          const style = getComputedStyle(el);
+          if (style.overflow === 'hidden' || style.overflowY === 'hidden') {
+            (el as HTMLElement).style.setProperty('overflow', 'auto', 'important');
+            (el as HTMLElement).style.setProperty('overflow-y', 'auto', 'important');
+            fixed++;
+          }
+          // Remove height:100% + position:fixed that locks scroll
+          if (style.position === 'fixed' && (el === document.body || el === document.documentElement)) {
+            (el as HTMLElement).style.setProperty('position', 'static', 'important');
+            fixed++;
+          }
+        }
+        // Remove blur/filter effects (paywalls often blur the content)
+        const blurred = document.querySelectorAll('[style*="blur"], [style*="filter"]');
+        blurred.forEach(el => {
+          const s = (el as HTMLElement).style;
+          if (s.filter?.includes('blur') || s.webkitFilter?.includes('blur')) {
+            s.setProperty('filter', 'none', 'important');
+            s.setProperty('-webkit-filter', 'none', 'important');
+            fixed++;
+          }
+        });
+        // Remove max-height truncation (article truncation)
+        const truncated = document.querySelectorAll('[class*="truncat"], [class*="preview"], [class*="teaser"]');
+        truncated.forEach(el => {
+          const s = getComputedStyle(el);
+          if (s.maxHeight && s.maxHeight !== 'none' && parseInt(s.maxHeight) < 500) {
+            (el as HTMLElement).style.setProperty('max-height', 'none', 'important');
+            (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
+            fixed++;
+          }
+        });
+        return fixed;
+      });
+      if (scrollFixed > 0) removed.push('scroll unlocked');
+
+      // Remove "ADVERTISEMENT" / "Article continues below" text labels
+      const adLabelCount = await page.evaluate(() => {
+        let removed = 0;
+        const adTextPatterns = [
+          /^advertisement$/i, /^sponsored$/i, /^promoted$/i,
+          /article continues/i, /continues below/i,
+          /^ad$/i, /^paid content$/i, /^partner content$/i,
+        ];
+        // Walk text-heavy small elements looking for ad labels
+        const candidates = document.querySelectorAll('div, span, p, figcaption, label');
+        for (const el of candidates) {
+          const text = (el.textContent || '').trim();
+          if (text.length > 50) continue; // Too much text, probably real content
+          if (adTextPatterns.some(p => p.test(text))) {
+            // Also hide the parent if it's a wrapper with little else
+            const parent = el.parentElement;
+            if (parent && (parent.textContent || '').trim().length < 80) {
+              (parent as HTMLElement).style.setProperty('display', 'none', 'important');
+            } else {
+              (el as HTMLElement).style.setProperty('display', 'none', 'important');
+            }
+            removed++;
+          }
+        }
+        return removed;
+      });
+      if (adLabelCount > 0) removed.push(`${adLabelCount} ad labels`);
+
+      // Remove empty ad placeholder whitespace (divs that are now empty after ad removal)
+      const collapsedCount = await page.evaluate(() => {
+        let collapsed = 0;
+        const candidates = document.querySelectorAll(
+          'div[class*="ad"], div[id*="ad"], aside[class*="ad"], div[class*="sidebar"], ' +
+          'div[class*="rail"], div[class*="right-col"], div[class*="widget"]'
+        );
+        for (const el of candidates) {
+          const rect = el.getBoundingClientRect();
+          // If the element has significant height but no visible text content, collapse it
+          if (rect.height > 50 && rect.width > 0) {
+            const text = (el.textContent || '').trim();
+            const images = el.querySelectorAll('img:not([src*="logo"]):not([src*="icon"])');
+            const links = el.querySelectorAll('a');
+            // Empty or mostly empty: collapse
+            if (text.length < 20 && images.length === 0 && links.length < 2) {
+              (el as HTMLElement).style.setProperty('display', 'none', 'important');
+              collapsed++;
+            }
+          }
+        }
+        return collapsed;
+      });
+      if (collapsedCount > 0) removed.push(`${collapsedCount} empty placeholders`);
+
+      if (removed.length === 0) return 'No clutter elements found to remove.';
+      return `Cleaned up: ${removed.join(', ')}`;
+    }
+
+    case 'prettyscreenshot': {
+      // Parse flags
+      let scrollTo: string | undefined;
+      let doCleanup = false;
+      const hideSelectors: string[] = [];
+      let viewportWidth: number | undefined;
+      let outputPath: string | undefined;
+
+      for (let i = 0; i < args.length; i++) {
+        if (args[i] === '--scroll-to' && i + 1 < args.length) {
+          scrollTo = args[++i];
+        } else if (args[i] === '--cleanup') {
+          doCleanup = true;
+        } else if (args[i] === '--hide' && i + 1 < args.length) {
+          // Collect all following non-flag args as selectors to hide
+          i++;
+          while (i < args.length && !args[i].startsWith('--')) {
+            hideSelectors.push(args[i]);
+            i++;
+          }
+          i--; // Back up since the for loop will increment
+        } else if (args[i] === '--width' && i + 1 < args.length) {
+          viewportWidth = parseInt(args[++i], 10);
+          if (isNaN(viewportWidth)) throw new Error('--width must be a number');
+        } else if (!args[i].startsWith('--')) {
+          outputPath = args[i];
+        } else {
+          throw new Error(`Unknown prettyscreenshot flag: ${args[i]}`);
+        }
+      }
+
+      // Default output path
+      if (!outputPath) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        outputPath = `${TEMP_DIR}/browse-pretty-${timestamp}.png`;
+      }
+      validateOutputPath(outputPath);
+
+      const originalViewport = page.viewportSize();
+
+      // Set viewport width if specified
+      if (viewportWidth && originalViewport) {
+        await page.setViewportSize({ width: viewportWidth, height: originalViewport.height });
+      }
+
+      // Run cleanup if requested
+      if (doCleanup) {
+        const allSelectors = [
+          ...CLEANUP_SELECTORS.ads,
+          ...CLEANUP_SELECTORS.cookies,
+          ...CLEANUP_SELECTORS.social,
+        ];
+        await page.evaluate((sels: string[]) => {
+          for (const sel of sels) {
+            try {
+              document.querySelectorAll(sel).forEach(el => {
+                (el as HTMLElement).style.display = 'none';
+              });
+            } catch (err: any) {
+              if (!(err instanceof DOMException)) throw err;
+            }
+          }
+          // Also hide fixed/sticky (except nav)
+          for (const el of document.querySelectorAll('*')) {
+            const style = getComputedStyle(el);
+            if (style.position === 'fixed' || style.position === 'sticky') {
+              const tag = el.tagName.toLowerCase();
+              if (tag === 'nav' || tag === 'header') continue;
+              if (el.getAttribute('role') === 'navigation') continue;
+              (el as HTMLElement).style.display = 'none';
+            }
+          }
+        }, allSelectors);
+      }
+
+      // Hide specific elements
+      if (hideSelectors.length > 0) {
+        await page.evaluate((sels: string[]) => {
+          for (const sel of sels) {
+            try {
+              document.querySelectorAll(sel).forEach(el => {
+                (el as HTMLElement).style.display = 'none';
+              });
+            } catch (err: any) {
+              if (!(err instanceof DOMException)) throw err;
+            }
+          }
+        }, hideSelectors);
+      }
+
+      // Scroll to target
+      if (scrollTo) {
+        // Try as CSS selector first, then as text content
+        const scrolled = await page.evaluate((target: string) => {
+          // Try CSS selector
+          let el = document.querySelector(target);
+          if (el) {
+            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+            return true;
+          }
+          // Try text match
+          const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            null,
+          );
+          let node: Node | null;
+          while ((node = walker.nextNode())) {
+            if (node.textContent?.includes(target)) {
+              const parent = node.parentElement;
+              if (parent) {
+                parent.scrollIntoView({ behavior: 'instant', block: 'center' });
+                return true;
+              }
+            }
+          }
+          return false;
+        }, scrollTo);
+
+        if (!scrolled) {
+          // Restore viewport before throwing
+          if (viewportWidth && originalViewport) {
+            await page.setViewportSize(originalViewport);
+          }
+          throw new Error(`Could not find element or text to scroll to: ${scrollTo}`);
+        }
+        // Brief wait for scroll to settle
+        await page.waitForTimeout(300);
+      }
+
+      // Take screenshot
+      await page.screenshot({ path: outputPath, fullPage: !scrollTo });
+
+      // Restore viewport
+      if (viewportWidth && originalViewport) {
+        await page.setViewportSize(originalViewport);
+      }
+
+      const parts = ['Screenshot saved'];
+      if (doCleanup) parts.push('(cleaned)');
+      if (scrollTo) parts.push(`(scrolled to: ${scrollTo})`);
+      parts.push(`: ${outputPath}`);
+      return parts.join(' ');
+    }
+
+    case 'download': {
+      if (args.length === 0) throw new Error('Usage: download <url|@ref> [path] [--base64]');
+      const isBase64 = args.includes('--base64');
+      const filteredArgs = args.filter(a => a !== '--base64');
+      let url = filteredArgs[0];
+      const outputPath = filteredArgs[1];
+
+      // Resolve @ref to element src
+      if (url.startsWith('@')) {
+        const resolved = await bm.resolveRef(url);
+        if (!('locator' in resolved)) throw new Error(`Expected @ref, got CSS selector: ${url}`);
+        const locator = resolved.locator;
+        const tagName = await locator.evaluate(el => el.tagName.toLowerCase());
+        if (tagName === 'img') {
+          url = await locator.evaluate(el => {
+            const img = el as HTMLImageElement;
+            return img.currentSrc || img.src || img.getAttribute('data-src') || '';
+          });
+        } else if (tagName === 'video') {
+          url = await locator.evaluate(el => (el as HTMLVideoElement).currentSrc || (el as HTMLVideoElement).src || '');
+        } else if (tagName === 'audio') {
+          url = await locator.evaluate(el => (el as HTMLAudioElement).currentSrc || (el as HTMLAudioElement).src || '');
+        } else {
+          // Try src attribute on any element
+          url = await locator.evaluate(el => el.getAttribute('src') || '');
+        }
+        if (!url) throw new Error(`Could not extract URL from ${filteredArgs[0]} (${tagName})`);
+      }
+
+      // Check for HLS/DASH
+      if (url.includes('.m3u8') || url.includes('.mpd')) {
+        throw new Error('This is an HLS/DASH stream. Use yt-dlp or ffmpeg for adaptive stream downloads.');
+      }
+
+      // Determine output path and extension
+      const page = bm.getPage();
+      let contentType = 'application/octet-stream';
+      let buffer: Buffer;
+
+      if (url.startsWith('blob:')) {
+        // Strategy 3: Blob URL -- in-page fetch + base64
+        const dataUrl = await page.evaluate(async (blobUrl) => {
+          try {
+            const resp = await fetch(blobUrl);
+            const blob = await resp.blob();
+            if (blob.size > 100 * 1024 * 1024) return 'ERROR:TOO_LARGE';
+            return new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.onerror = () => reject('Failed to read blob');
+              reader.readAsDataURL(blob);
+            });
+          } catch (err: any) {
+            return `ERROR:EXPIRED:${err?.message || 'unknown'}`;
+          }
+        }, url);
+
+        if (dataUrl === 'ERROR:TOO_LARGE') throw new Error('Blob too large (>100MB). Use a different approach.');
+        if (dataUrl.startsWith('ERROR:EXPIRED')) throw new Error(`Blob URL expired or inaccessible: ${dataUrl.slice('ERROR:EXPIRED:'.length)}`);
+
+        const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) throw new Error('Failed to decode blob data');
+        contentType = match[1];
+        buffer = Buffer.from(match[2], 'base64');
+      } else {
+        // Strategy 1: Direct URL via page.request.fetch().
+        // Gate the URL through the same validator `goto` uses. Without
+        // this check, download + scrape bypass the navigation
+        // blocklist and a caller with write scope can read
+        // http://169.254.169.254/latest/meta-data/ (AWS IMDSv1), the
+        // GCP/Azure metadata equivalents, or any internal IPv4/IPv6
+        // the server happens to route to. The response body is then
+        // returned to the caller (base64) or written to disk where
+        // GET /file serves it back.
+        await validateNavigationUrl(url);
+        const response = await page.request.fetch(url, { timeout: 30000 });
+        const status = response.status();
+        if (status >= 400) {
+          throw new Error(`Download failed: HTTP ${status} ${response.statusText()}`);
+        }
+        contentType = response.headers()['content-type'] || 'application/octet-stream';
+        buffer = Buffer.from(await response.body());
+        if (buffer.length > 200 * 1024 * 1024) {
+          throw new Error('File too large (>200MB).');
+        }
+      }
+
+      // --base64 mode: return inline
+      if (isBase64) {
+        if (buffer.length > 10 * 1024 * 1024) {
+          throw new Error('File too large for --base64 (>10MB). Use disk download + GET /file instead.');
+        }
+        const mimeType = contentType.split(';')[0].trim();
+        return `data:${mimeType};base64,${buffer.toString('base64')}`;
+      }
+
+      // Write to disk
+      const ext = contentType.split(';')[0].includes('/')
+        ? mimeToExt(contentType.split(';')[0].trim())
+        : '.bin';
+      const destPath = outputPath || path.join(TEMP_DIR, `browse-download-${Date.now()}${ext}`);
+      validateOutputPath(destPath);
+      fs.writeFileSync(destPath, buffer);
+      const sizeKB = Math.round(buffer.length / 1024);
+      return `Downloaded: ${destPath} (${sizeKB}KB, ${contentType.split(';')[0].trim()})`;
+    }
+
+    case 'scrape': {
+      if (args.length === 0) throw new Error('Usage: scrape <images|videos|media> [--selector sel] [--dir path] [--limit N]');
+      const mediaType = args[0];
+      if (!['images', 'videos', 'media'].includes(mediaType)) {
+        throw new Error(`Invalid type: ${mediaType}. Use: images, videos, or media`);
+      }
+
+      // Parse flags
+      const selectorIdx = args.indexOf('--selector');
+      const selector = selectorIdx >= 0 ? args[selectorIdx + 1] : undefined;
+      const dirIdx = args.indexOf('--dir');
+      const dir = dirIdx >= 0 ? args[dirIdx + 1] : path.join(TEMP_DIR, `browse-scrape-${Date.now()}`);
+      const limitIdx = args.indexOf('--limit');
+      const limit = Math.min(limitIdx >= 0 ? parseInt(args[limitIdx + 1], 10) || 50 : 50, 200);
+
+      validateOutputPath(dir);
+      fs.mkdirSync(dir, { recursive: true });
+
+      const { extractMedia } = await import('./media-extract');
+      const target = bm.getActiveFrameOrPage();
+      const filter = mediaType === 'images' ? 'images' as const
+        : mediaType === 'videos' ? 'videos' as const
+        : undefined;
+      const mediaResult = await extractMedia(target, { selector, filter });
+
+      // Collect URLs to download
+      const urls: Array<{ url: string; type: string }> = [];
+      const seen = new Set<string>();
+
+      for (const img of mediaResult.images) {
+        const url = img.currentSrc || img.src || img.dataSrc;
+        if (url && !seen.has(url) && !url.startsWith('data:')) {
+          seen.add(url);
+          urls.push({ url, type: 'image' });
+        }
+      }
+      for (const vid of mediaResult.videos) {
+        const url = vid.currentSrc || vid.src;
+        if (url && !seen.has(url) && !url.startsWith('blob:') && !vid.isHLS && !vid.isDASH) {
+          seen.add(url);
+          urls.push({ url, type: 'video' });
+        }
+      }
+      for (const bg of mediaResult.backgroundImages) {
+        if (bg.url && !seen.has(bg.url)) {
+          seen.add(bg.url);
+          urls.push({ url: bg.url, type: 'image' });
+        }
+      }
+
+      const toDownload = urls.slice(0, limit);
+      const page = bm.getPage();
+      const manifest: any = {
+        url: page.url(),
+        scraped_at: new Date().toISOString(),
+        files: [] as any[],
+        total_size: 0,
+        succeeded: 0,
+        failed: 0,
+      };
+
+      const lines: string[] = [];
+      for (let i = 0; i < toDownload.length; i++) {
+        const { url, type } = toDownload[i];
+        try {
+          // Same gate as the download command — page.request.fetch
+          // must not reach cloud metadata, ULA ranges, or the rest of
+          // the blocklist. See url-validation.ts for the full list.
+          await validateNavigationUrl(url);
+          const response = await page.request.fetch(url, { timeout: 30000 });
+          if (response.status() >= 400) throw new Error(`HTTP ${response.status()}`);
+          const ct = response.headers()['content-type'] || 'application/octet-stream';
+          const ext = mimeToExt(ct.split(';')[0].trim());
+          const filename = `${type}-${String(i + 1).padStart(3, '0')}${ext}`;
+          const filePath = path.join(dir, filename);
+          const body = Buffer.from(await response.body());
+          try {
+            fs.writeFileSync(filePath, body);
+          } catch (writeErr: any) {
+            throw new Error(`Disk write failed: ${writeErr.message}`);
+          }
+          manifest.files.push({ path: filename, src: url, size: body.length, type: ct.split(';')[0].trim() });
+          manifest.total_size += body.length;
+          manifest.succeeded++;
+          lines.push(`  [${i + 1}/${toDownload.length}] ${filename} (${Math.round(body.length / 1024)}KB)`);
+        } catch (err: any) {
+          manifest.files.push({ path: null, src: url, size: 0, type: '', error: err.message });
+          manifest.failed++;
+          lines.push(`  [${i + 1}/${toDownload.length}] FAILED: ${err.message}`);
+        }
+        // 100ms delay between downloads
+        if (i < toDownload.length - 1) await new Promise(r => setTimeout(r, 100));
+      }
+
+      // Write manifest
+      fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+
+      return `Scraped ${toDownload.length} items to ${dir}/\n${lines.join('\n')}\n\nSummary: ${manifest.succeeded} succeeded, ${manifest.failed} failed, ${Math.round(manifest.total_size / 1024)}KB total`;
+    }
+
+    case 'archive': {
+      const page = bm.getPage();
+      const outputPath = args[0] || path.join(TEMP_DIR, `browse-archive-${Date.now()}.mhtml`);
+      validateOutputPath(outputPath);
+
+      try {
+        const cdp = await page.context().newCDPSession(page);
+        const { data } = await cdp.send('Page.captureSnapshot', { format: 'mhtml' });
+        await cdp.detach();
+        fs.writeFileSync(outputPath, data);
+        return `Archive saved: ${outputPath} (${Math.round(data.length / 1024)}KB, MHTML)`;
+      } catch (err: any) {
+        throw new Error(`MHTML archive requires Chromium CDP. Use 'text' or 'html' for raw page content. (${err.message})`);
+      }
     }
 
 

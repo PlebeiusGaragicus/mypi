@@ -17,6 +17,8 @@ export interface BrowseConfig {
   projectDir: string;
   stateDir: string;
   stateFile: string;
+  chromiumProfileDir: string;
+  authFile: string;
   consoleLog: string;
   networkLog: string;
   dialogLog: string;
@@ -66,6 +68,8 @@ export function resolveConfig(
     projectDir,
     stateDir,
     stateFile,
+    chromiumProfileDir: path.join(stateDir, 'chromium-profile'),
+    authFile: path.join(stateDir, 'auth.json'),
     consoleLog: path.join(stateDir, 'browse-console.log'),
     networkLog: path.join(stateDir, 'browse-network.log'),
     dialogLog: path.join(stateDir, 'browse-dialog.log'),

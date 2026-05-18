@@ -1,90 +1,37 @@
 /**
- * gstack CLI — thin wrapper that talks to the persistent server
- *
- * Flow:
- *   1. Read .gstack/browse.json for port + token
- *   2. If missing or stale PID → start server in background
- *   3. Health check + version mismatch detection
- *   4. Send command via HTTP POST
- *   5. Print response to stdout (or stderr for errors)
+ * browser-control CLI — thin wrapper for the persistent Playwright server.
+ * Supported platforms: macOS and Linux only.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { safeUnlink, safeUnlinkQuiet, safeKill, isProcessAlive } from './error-handling';
 import { resolveConfig, ensureStateDir, readVersionHash } from './config';
+import { assertSupportedPlatform } from './platform';
 
 const config = resolveConfig();
-const IS_WINDOWS = process.platform === 'win32';
-const MAX_START_WAIT = IS_WINDOWS ? 15000 : (process.env.CI ? 30000 : 8000); // Node+Chromium takes longer on Windows
+const MAX_START_WAIT = process.env.CI ? 30000 : 8000;
 
 export function resolveServerScript(
   env: Record<string, string | undefined> = process.env,
   metaDir: string = import.meta.dir,
-  execPath: string = process.execPath
+  execPath: string = process.execPath,
 ): string {
-  if (env.BROWSE_SERVER_SCRIPT) {
-    return env.BROWSE_SERVER_SCRIPT;
-  }
-
-  // Dev mode: cli.ts runs directly from browse/src
-  // On macOS/Linux, import.meta.dir starts with /
-  // On Windows, it starts with a drive letter (e.g., C:\...)
+  if (env.BROWSE_SERVER_SCRIPT) return env.BROWSE_SERVER_SCRIPT;
   if (!metaDir.includes('$bunfs')) {
     const direct = path.resolve(metaDir, 'server.ts');
-    if (fs.existsSync(direct)) {
-      return direct;
-    }
+    if (fs.existsSync(direct)) return direct;
   }
-
-  // Compiled binary: derive the source tree from browse/dist/browse
   if (execPath) {
     const adjacent = path.resolve(path.dirname(execPath), '..', 'src', 'server.ts');
-    if (fs.existsSync(adjacent)) {
-      return adjacent;
-    }
+    if (fs.existsSync(adjacent)) return adjacent;
   }
-
-  throw new Error(
-    'Cannot find server.ts. Set BROWSE_SERVER_SCRIPT env or run from the browse source tree.'
-  );
+  throw new Error('Cannot find server.ts. Set BROWSE_SERVER_SCRIPT or run from source tree.');
 }
 
 const SERVER_SCRIPT = resolveServerScript();
 
-/**
- * On Windows, resolve the Node.js-compatible server bundle.
- * Falls back to null if not found (server will use Bun instead).
- */
-export function resolveNodeServerScript(
-  metaDir: string = import.meta.dir,
-  execPath: string = process.execPath
-): string | null {
-  // Dev mode
-  if (!metaDir.includes('$bunfs')) {
-    const distScript = path.resolve(metaDir, '..', 'dist', 'server-node.mjs');
-    if (fs.existsSync(distScript)) return distScript;
-  }
-
-  // Compiled binary: browse/dist/browse → browse/dist/server-node.mjs
-  if (execPath) {
-    const adjacent = path.resolve(path.dirname(execPath), 'server-node.mjs');
-    if (fs.existsSync(adjacent)) return adjacent;
-  }
-
-  return null;
-}
-
-const NODE_SERVER_SCRIPT = IS_WINDOWS ? resolveNodeServerScript() : null;
-
-// On Windows, hard-fail if server-node.mjs is missing — the Bun path is known broken.
-if (IS_WINDOWS && !NODE_SERVER_SCRIPT) {
-  throw new Error(
-    'server-node.mjs not found. Run `bun run build` to generate the Windows server bundle.'
-  );
-}
-
-interface ServerState {
+export interface ServerState {
   pid: number;
   port: number;
   token: string;
@@ -94,79 +41,38 @@ interface ServerState {
   mode?: 'launched' | 'headed';
 }
 
-// ─── State File ────────────────────────────────────────────────
-function readState(): ServerState | null {
+export function readState(): ServerState | null {
   try {
-    const data = fs.readFileSync(config.stateFile, 'utf-8');
-    return JSON.parse(data);
+    return JSON.parse(fs.readFileSync(config.stateFile, 'utf-8'));
   } catch {
     return null;
   }
 }
 
-// isProcessAlive is imported from ./error-handling
-
-/**
- * HTTP health check — definitive proof the server is alive and responsive.
- * Used in all polling loops instead of isProcessAlive() (which is slow on Windows).
- */
 export async function isServerHealthy(port: number): Promise<boolean> {
   try {
     const resp = await fetch(`http://127.0.0.1:${port}/health`, {
       signal: AbortSignal.timeout(2000),
     });
     if (!resp.ok) return false;
-    const health = await resp.json() as any;
+    const health = await resp.json() as { status?: string };
     return health.status === 'healthy';
   } catch {
     return false;
   }
 }
 
-// ─── Process Management ─────────────────────────────────────────
 async function killServer(pid: number): Promise<void> {
   if (!isProcessAlive(pid)) return;
-
-  if (IS_WINDOWS) {
-    // taskkill /T /F kills the process tree (Node + Chromium)
-    try {
-      Bun.spawnSync(
-        ['taskkill', '/PID', String(pid), '/T', '/F'],
-        { stdout: 'pipe', stderr: 'pipe', timeout: 5000 }
-      );
-    } catch (err: any) {
-      if (err?.code !== 'ENOENT') throw err;
-    }
-    const deadline = Date.now() + 2000;
-    while (Date.now() < deadline && isProcessAlive(pid)) {
-      await Bun.sleep(100);
-    }
-    return;
-  }
-
   safeKill(pid, 'SIGTERM');
-
-  // Wait up to 2s for graceful shutdown
   const deadline = Date.now() + 2000;
   while (Date.now() < deadline && isProcessAlive(pid)) {
     await Bun.sleep(100);
   }
-
-  // Force kill if still alive
-  if (isProcessAlive(pid)) {
-    safeKill(pid, 'SIGKILL');
-  }
+  if (isProcessAlive(pid)) safeKill(pid, 'SIGKILL');
 }
 
-/**
- * Clean up legacy /tmp/browse-server*.json files from before project-local state.
- * Verifies PID ownership before sending signals.
- */
 function cleanupLegacyState(): void {
-  // No legacy state on Windows — /tmp and `ps` don't exist, and gstack
-  // never ran on Windows before the Node.js fallback was added.
-  if (IS_WINDOWS) return;
-
   try {
     const files = fs.readdirSync('/tmp').filter(f => f.startsWith('browse-server') && f.endsWith('.json'));
     for (const file of files) {
@@ -174,137 +80,93 @@ function cleanupLegacyState(): void {
       try {
         const data = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
         if (data.pid && isProcessAlive(data.pid)) {
-          // Verify this is actually a browse server before killing
           const check = Bun.spawnSync(['ps', '-p', String(data.pid), '-o', 'command='], {
             stdout: 'pipe', stderr: 'pipe', timeout: 2000,
           });
           const cmd = check.stdout.toString().trim();
-          if (cmd.includes('bun') || cmd.includes('server.ts')) {
-            safeKill(data.pid, 'SIGTERM');
-          }
+          if (cmd.includes('bun') || cmd.includes('server.ts')) safeKill(data.pid, 'SIGTERM');
         }
         safeUnlink(fullPath);
-      } catch {
-        // Best effort — skip files we can't parse or clean up
-      }
+      } catch { /* ignore */ }
     }
-    // Clean up legacy log files too
-    const logFiles = fs.readdirSync('/tmp').filter(f =>
-      f.startsWith('browse-console') || f.startsWith('browse-network') || f.startsWith('browse-dialog')
-    );
-    for (const file of logFiles) {
-      safeUnlink(`/tmp/${file}`);
+  } catch { /* ignore */ }
+}
+
+async function cleanupProfileLocks(profileDir: string): Promise<void> {
+  try {
+    const singletonLock = path.join(profileDir, 'SingletonLock');
+    const lockTarget = fs.readlinkSync(singletonLock);
+    const orphanPid = parseInt(lockTarget.split('-').pop() || '', 10);
+    if (orphanPid && isProcessAlive(orphanPid)) {
+      safeKill(orphanPid, 'SIGTERM');
+      await Bun.sleep(1000);
+      if (isProcessAlive(orphanPid)) safeKill(orphanPid, 'SIGKILL');
     }
-  } catch {
-    // /tmp read failed — skip legacy cleanup
+  } catch (err: any) {
+    if (err?.code !== 'ENOENT' && err?.code !== 'EINVAL') throw err;
+  }
+  for (const lockFile of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+    safeUnlinkQuiet(path.join(profileDir, lockFile));
   }
 }
 
-// ─── Server Lifecycle ──────────────────────────────────────────
-async function startServer(extraEnv?: Record<string, string>): Promise<ServerState> {
+export async function startServer(extraEnv?: Record<string, string>): Promise<ServerState> {
   ensureStateDir(config);
-
-  // Clean up stale state file and error log
   safeUnlink(config.stateFile);
   safeUnlink(path.join(config.stateDir, 'browse-startup-error.log'));
 
-  let proc: any = null;
+  const parentPid = parseInt(process.env.BROWSE_PARENT_PID || '', 10) === 0
+    ? '0'
+    : String(process.pid);
+  const binaryVersion = readVersionHash(process.execPath) || 'dev';
 
-  // Allow the caller to opt out of the parent-process watchdog by setting
-  // BROWSE_PARENT_PID=0 in the environment. Useful for CI, non-interactive
-  // shells, and short-lived Bash invocations that need the server to outlive
-  // the spawning CLI. Defaults to the current process PID (watchdog active).
-  // Parse as int so stray whitespace ("0\n") still opts out — matches the
-  // server's own parseInt at server.ts:760.
-  const parentPid = parseInt(process.env.BROWSE_PARENT_PID || '', 10) === 0 ? '0' : String(process.pid);
+  const proc = Bun.spawn(['bun', 'run', SERVER_SCRIPT], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      BROWSE_STATE_FILE: config.stateFile,
+      BROWSE_PARENT_PID: parentPid,
+      BROWSE_BINARY_VERSION: binaryVersion,
+      ...extraEnv,
+    },
+  });
+  proc.unref();
 
-  if (IS_WINDOWS && NODE_SERVER_SCRIPT) {
-    // Windows: Bun.spawn() + proc.unref() doesn't truly detach on Windows —
-    // when the CLI exits, the server dies with it. Use Node's child_process.spawn
-    // with { detached: true } instead, which is the gold standard for Windows
-    // process independence. Credit: PR #191 by @fqueiro.
-    const extraEnvStr = JSON.stringify({ BROWSE_STATE_FILE: config.stateFile, BROWSE_PARENT_PID: parentPid, ...(extraEnv || {}) });
-    const binaryVersion = readVersionHash(process.execPath) || 'dev';
-    const launcherCode =
-      `const{spawn}=require('child_process');` +
-      `spawn(process.execPath,[${JSON.stringify(NODE_SERVER_SCRIPT)}],` +
-      `{detached:true,stdio:['ignore','ignore','ignore'],env:Object.assign({},process.env,` +
-      `${extraEnvStr}, { BROWSE_BINARY_VERSION: ${JSON.stringify(binaryVersion)} })}).unref()`;
-    Bun.spawnSync(['node', '-e', launcherCode], { stdio: ['ignore', 'ignore', 'ignore'] });
-  } else {
-    // macOS/Linux: Bun.spawn + unref works correctly
-    const binaryVersion = readVersionHash(process.execPath) || 'dev';
-    proc = Bun.spawn(['bun', 'run', SERVER_SCRIPT], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        BROWSE_STATE_FILE: config.stateFile,
-        BROWSE_PARENT_PID: parentPid,
-        BROWSE_BINARY_VERSION: binaryVersion,
-        ...extraEnv,
-      },
-    });
-    proc.unref();
-  }
-
-  // Wait for server to become healthy.
-  // Use HTTP health check (not isProcessAlive) — it's fast (~instant ECONNREFUSED)
-  // and works reliably on all platforms including Windows.
   const start = Date.now();
   while (Date.now() - start < MAX_START_WAIT) {
     const state = readState();
-    if (state && await isServerHealthy(state.port)) {
-      return state;
-    }
+    if (state && await isServerHealthy(state.port)) return state;
     await Bun.sleep(100);
   }
 
-  // Server didn't start in time — try to get error details
-  if (proc?.stderr) {
-    // macOS/Linux: read stderr from the spawned process
+  if (proc.stderr) {
     const reader = proc.stderr.getReader();
     const { value } = await reader.read();
     if (value) {
-      const errText = new TextDecoder().decode(value);
-      throw new Error(`Server failed to start:\n${errText}`);
+      throw new Error(`Server failed to start:\n${new TextDecoder().decode(value)}`);
     }
-  } else {
-    // Windows: check startup error log (server writes errors to disk since
-    // stderr is unavailable due to stdio: 'ignore' for detachment)
-    const errorLogPath = path.join(config.stateDir, 'browse-startup-error.log');
-    try {
-      const errorLog = fs.readFileSync(errorLogPath, 'utf-8').trim();
-      if (errorLog) {
-        throw new Error(`Server failed to start:\n${errorLog}`);
-      }
-    } catch (e: any) {
-      if (e.code !== 'ENOENT') throw e;
-    }
+  }
+  const errorLogPath = path.join(config.stateDir, 'browse-startup-error.log');
+  try {
+    const errorLog = fs.readFileSync(errorLogPath, 'utf-8').trim();
+    if (errorLog) throw new Error(`Server failed to start:\n${errorLog}`);
+  } catch (e: any) {
+    if (e.code !== 'ENOENT' && !e.message?.includes('Server failed')) throw e;
   }
   throw new Error(`Server failed to start within ${MAX_START_WAIT / 1000}s`);
 }
 
-/**
- * Acquire an exclusive lockfile to prevent concurrent ensureServer() races (TOCTOU).
- * Returns a cleanup function that releases the lock.
- */
 function acquireServerLock(): (() => void) | null {
   const lockPath = `${config.stateFile}.lock`;
   try {
-    // 'wx' — create exclusively, fails if file already exists (atomic check-and-create)
-    // Using string flag instead of numeric constants for Bun Windows compatibility
     const fd = fs.openSync(lockPath, 'wx');
     fs.writeSync(fd, `${process.pid}\n`);
     fs.closeSync(fd);
     return () => { safeUnlink(lockPath); };
   } catch {
-    // Lock already held — check if the holder is still alive
     try {
       const holderPid = parseInt(fs.readFileSync(lockPath, 'utf8').trim(), 10);
-      if (holderPid && isProcessAlive(holderPid)) {
-        return null; // Another live process holds the lock
-      }
-      // Stale lock — remove and retry
+      if (holderPid && isProcessAlive(holderPid)) return null;
       fs.unlinkSync(lockPath);
       return acquireServerLock();
     } catch {
@@ -315,12 +177,7 @@ function acquireServerLock(): (() => void) | null {
 
 async function ensureServer(): Promise<ServerState> {
   const state = readState();
-
-  // Health-check-first: HTTP is definitive proof the server is alive and responsive.
-  // This replaces the PID-gated approach which breaks on Windows (Bun's process.kill
-  // always throws ESRCH for Windows PIDs in compiled binaries).
   if (state && await isServerHealthy(state.port)) {
-    // Check for binary version mismatch (auto-restart on update)
     const currentVersion = readVersionHash();
     if (currentVersion && state.binaryVersion && currentVersion !== state.binaryVersion) {
       console.error('[browse] Binary updated, restarting server...');
@@ -330,31 +187,21 @@ async function ensureServer(): Promise<ServerState> {
     return state;
   }
 
-  // BROWSE_NO_AUTOSTART: sidebar agent sets this so the child claude never
-  // spawns an invisible headless browser. If the headed server is down,
-  // fail fast with a clear error instead of silently starting a new one.
   if (process.env.BROWSE_NO_AUTOSTART === '1') {
     console.error('[browse] Server not available and BROWSE_NO_AUTOSTART is set.');
-    console.error('[browse] The headed browser may have been closed. Run /open-gstack-browser to restart.');
+    console.error('[browse] Run `$B connect` to start a headed browser.');
     process.exit(1);
   }
 
-  // Guard: never silently replace a headed server with a headless one.
-  // Headed mode means a user-visible Chrome window is (or was) controlled.
-  // Silently replacing it would be confusing — tell the user to reconnect.
   if (state && state.mode === 'headed' && isProcessAlive(state.pid)) {
     console.error(`[browse] Headed server running (PID ${state.pid}) but not responding.`);
-    console.error(`[browse] Run '/open-gstack-browser' to restart.`);
+    console.error('[browse] Run `$B connect` to restart.');
     process.exit(1);
   }
 
-  // Ensure state directory exists before lock acquisition (lock file lives there)
   ensureStateDir(config);
-
-  // Acquire lock to prevent concurrent restart races (TOCTOU)
   const releaseLock = acquireServerLock();
   if (!releaseLock) {
-    // Another process is starting the server — wait for it
     console.error('[browse] Another instance is starting the server, waiting...');
     const start = Date.now();
     while (Date.now() - start < MAX_START_WAIT) {
@@ -366,16 +213,9 @@ async function ensureServer(): Promise<ServerState> {
   }
 
   try {
-    // Re-read state under lock in case another process just started the server
     const freshState = readState();
-    if (freshState && await isServerHealthy(freshState.port)) {
-      return freshState;
-    }
-
-    // Kill the old server to avoid orphaned chromium processes
-    if (state && state.pid) {
-      await killServer(state.pid);
-    }
+    if (freshState && await isServerHealthy(freshState.port)) return freshState;
+    if (state?.pid) await killServer(state.pid);
     console.error('[browse] Starting server...');
     return await startServer();
   } finally {
@@ -383,21 +223,16 @@ async function ensureServer(): Promise<ServerState> {
   }
 }
 
-/**
- * Extract `--tab-id <N>` from args and return { tabId, args } with the flag stripped.
- * Used by make-pdf's tab-scoped flow: every browse command (newtab, load-html, js,
- * pdf, closetab) can take `--tab-id <N>` to target a specific tab. Without this,
- * parallel `$P generate` calls would race on the active tab.
- */
 export function extractTabId(args: string[]): { tabId: number | undefined; args: string[] } {
   const stripped: string[] = [];
   let tabId: number | undefined;
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--tab-id') {
       const next = args[++i];
-      if (next === undefined) continue;
-      const parsed = parseInt(next, 10);
-      if (!isNaN(parsed)) tabId = parsed;
+      if (next !== undefined) {
+        const parsed = parseInt(next, 10);
+        if (!isNaN(parsed)) tabId = parsed;
+      }
     } else {
       stripped.push(args[i]);
     }
@@ -405,31 +240,29 @@ export function extractTabId(args: string[]): { tabId: number | undefined; args:
   return { tabId, args: stripped };
 }
 
-// ─── Command Dispatch ──────────────────────────────────────────
 async function sendCommand(state: ServerState, command: string, args: string[], retries = 0): Promise<void> {
-  // Precedence: CLI --tab-id flag > BROWSE_TAB env var.
-  // make-pdf always passes --tab-id; human users typically rely on BROWSE_TAB
-  // (set by sidebar-agent per-tab) or the active tab.
   const extracted = extractTabId(args);
   args = extracted.args;
   const envTab = process.env.BROWSE_TAB;
   const tabId = extracted.tabId ?? (envTab ? parseInt(envTab, 10) : undefined);
-  const body = JSON.stringify({ command, args, ...(tabId !== undefined && !isNaN(tabId) ? { tabId } : {}) });
+  const body = JSON.stringify({
+    command,
+    args,
+    ...(tabId !== undefined && !isNaN(tabId) ? { tabId } : {}),
+  });
 
   try {
     const resp = await fetch(`http://127.0.0.1:${state.port}/command`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${state.token}`,
+        Authorization: `Bearer ${state.token}`,
       },
       body,
       signal: AbortSignal.timeout(30000),
     });
 
     if (resp.status === 401) {
-      // Token mismatch — server may have restarted
-      console.error('[browse] Auth failed — server may have restarted. Retrying...');
       const newState = readState();
       if (newState && newState.token !== state.token) {
         return sendCommand(newState, command, args);
@@ -438,12 +271,10 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
     }
 
     const text = await resp.text();
-
     if (resp.ok) {
       process.stdout.write(text);
       if (!text.endsWith('\n')) process.stdout.write('\n');
     } else {
-      // Try to parse as JSON error
       try {
         const err = JSON.parse(text);
         console.error(err.error || text);
@@ -458,15 +289,11 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
       console.error('[browse] Command timed out after 30s');
       process.exit(1);
     }
-    // Connection error — server may have crashed
     if (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET' || err.message?.includes('fetch failed')) {
       if (retries >= 1) throw new Error('[browse] Server crashed twice in a row — aborting');
       console.error('[browse] Server connection lost. Restarting...');
-      // Kill the old server to avoid orphaned chromium processes
       const oldState = readState();
-      if (oldState && oldState.pid) {
-        await killServer(oldState.pid);
-      }
+      if (oldState?.pid) await killServer(oldState.pid);
       const newState = await startServer();
       return sendCommand(newState, command, args, retries + 1);
     }
@@ -474,59 +301,117 @@ async function sendCommand(state: ServerState, command: string, args: string[], 
   }
 }
 
-// ─── Main ──────────────────────────────────────────────────────
+async function handleConnect(): Promise<void> {
+  const profileDir = config.chromiumProfileDir;
+  const existingState = readState();
+  if (existingState?.mode === 'headed' && isProcessAlive(existingState.pid)) {
+    try {
+      const resp = await fetch(`http://127.0.0.1:${existingState.port}/health`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (resp.ok) {
+        console.log('Already connected in headed mode.');
+        process.exit(0);
+      }
+    } catch { /* restart */ }
+  }
+
+  if (existingState?.pid && isProcessAlive(existingState.pid)) {
+    safeKill(existingState.pid, 'SIGTERM');
+    await Bun.sleep(2000);
+    if (isProcessAlive(existingState.pid)) safeKill(existingState.pid, 'SIGKILL');
+  }
+
+  await cleanupProfileLocks(profileDir);
+  safeUnlinkQuiet(config.stateFile);
+
+  console.log('Launching headed Chromium...');
+  const newState = await startServer({
+    BROWSE_HEADED: '1',
+    BROWSE_PORT: process.env.BROWSE_HEADED_PORT || '34567',
+    BROWSE_PARENT_PID: '0',
+  });
+
+  const resp = await fetch(`http://127.0.0.1:${newState.port}/command`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${newState.token}`,
+    },
+    body: JSON.stringify({ command: 'status', args: [] }),
+    signal: AbortSignal.timeout(5000),
+  });
+  console.log(`Connected (headed)\n${await resp.text()}`);
+  process.exit(0);
+}
+
+async function handleDisconnect(): Promise<void> {
+  const existingState = readState();
+  if (!existingState || existingState.mode !== 'headed') {
+    console.log('Not in headed mode — nothing to disconnect.');
+    process.exit(0);
+  }
+  try {
+    const resp = await fetch(`http://127.0.0.1:${existingState.port}/command`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${existingState.token}`,
+      },
+      body: JSON.stringify({ command: 'disconnect', args: [] }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (resp.ok) {
+      console.log('Disconnected from headed browser.');
+      process.exit(0);
+    }
+  } catch { /* force cleanup */ }
+
+  if (isProcessAlive(existingState.pid)) {
+    safeKill(existingState.pid, 'SIGTERM');
+    await Bun.sleep(2000);
+    if (isProcessAlive(existingState.pid)) safeKill(existingState.pid, 'SIGKILL');
+  }
+  await cleanupProfileLocks(config.chromiumProfileDir);
+  safeUnlinkQuiet(config.stateFile);
+  console.log('Disconnected (server was unresponsive — force cleaned).');
+  process.exit(0);
+}
+
 async function main() {
+  assertSupportedPlatform();
+
   const args = process.argv.slice(2);
-
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
-    console.log(`browser-control — Fast headless browser for AI agents
+    console.log(`browser-control — Playwright browser for AI agents (macOS/Linux)
 
-Usage: browse <command> [args...]
+Usage: $B <command> [args...]
 
-Navigation:     goto <url> | back | forward | reload | url
-Content:        text | html [sel] | links | forms | accessibility
-Interaction:    click <sel> | fill <sel> <val> | select <sel> <val>
-                hover <sel> | type <text> | press <key>
-                scroll [sel] | wait <sel|--networkidle|--load> | viewport <WxH>
-                upload <sel> <file1> [file2...]
-                cookie-import <json-file>
-                cookie-import-browser [browser] [--domain <d>]
-Inspection:     js <expr> | eval <file> | css <sel> <prop> | attrs <sel>
-                console [--clear|--errors] | network [--clear] | dialog [--clear]
-                cookies | storage [set <k> <v>] | perf
-                is <prop> <sel> (visible|hidden|enabled|disabled|checked|editable|focused)
-Visual:         screenshot [--viewport] [--clip x,y,w,h] [@ref|sel] [path]
-                pdf [path] | responsive [prefix]
-Snapshot:       snapshot [-i] [-c] [-d N] [-s sel] [-D] [-a] [-o path] [-C]
-                -D/--diff: diff against previous snapshot
-                -a/--annotate: annotated screenshot with ref labels
-                -C/--cursor-interactive: find non-ARIA clickable elements
-Compare:        diff <url1> <url2>
-Multi-step:     chain (reads JSON from stdin)
-Tabs:           tabs | tab <id> | newtab [url] | closetab [id]
-Server:         status | cookie <n>=<v> | header <n>:<v>
-                useragent <str> | stop | restart
-Dialogs:        dialog-accept [text] | dialog-dismiss
+Headed: connect | disconnect | handoff [msg] | resume | focus [@ref]
+Challenge: on CHALLENGE_DETECTED → handoff, notify user, resume
 
-Refs:           After 'snapshot', use @e1, @e2... as selectors:
-                click @e3 | fill @e4 "value" | hover @e1
-                @c refs from -C: click @c1`);
+See shared/skills/browser-control/SKILL.md for full command list.`);
     process.exit(0);
   }
 
-  // One-time cleanup of legacy /tmp state files
   cleanupLegacyState();
-
   const command = args[0];
   const commandArgs = args.slice(1);
 
-  // Special case: chain reads from stdin
-  if (command === 'chain' && commandArgs.length === 0) {
-    const stdin = await Bun.stdin.text();
-    commandArgs.push(stdin.trim());
+  if (command === 'connect') {
+    await handleConnect();
+    return;
+  }
+  if (command === 'disconnect') {
+    await handleDisconnect();
+    return;
   }
 
-  let state = await ensureServer();
+  if (command === 'chain' && commandArgs.length === 0) {
+    commandArgs.push((await Bun.stdin.text()).trim());
+  }
+
+  const state = await ensureServer();
   await sendCommand(state, command, commandArgs);
 }
 
@@ -536,4 +421,3 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
-
