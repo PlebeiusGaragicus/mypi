@@ -9,3 +9,7 @@ models.json
 # reference-only repositories
 pi
 my-pi-setup
+
+# browser-runtime
+utilities/browser-runtime/node_modules
+utilities/browser-runtime/dist

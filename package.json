@@ -12,7 +12,11 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "postinstall": "bash scripts/hello-world.sh"
+    "postinstall": "bash scripts/hello-world.sh",
+    "browser:install": "cd utilities/browser-runtime && bun install",
+    "browser:build": "cd utilities/browser-runtime && bun run build",
+    "browser:test": "cd utilities/browser-runtime && bun test",
+    "browser:dev": "cd utilities/browser-runtime && bun run dev"
   },
   "pi": {
     "extensions": [

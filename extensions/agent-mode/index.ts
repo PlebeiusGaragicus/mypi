@@ -1,4 +1,5 @@
 import "./bootstrap-path";
+import "./bootstrap-browser";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import registerAgentMode from "./agent-mode";
 
