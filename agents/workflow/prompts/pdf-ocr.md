@@ -156,6 +156,18 @@ If you use `chat` (for example persona `judge`) for a quality rubric, pass **inl
 
 If validation fails, run at most one repair pass (`code` for page fixes, `write` for assembly issues), then re-check. If still failing, stop with partial artifact paths.
 
+### 9. Completion notify (ntfy)
+
+Run this phase **exactly once** when the workflow ends for the user. **If** you reached **Phase 8**, run it **after** validation (whether fully successful, successful after one repair pass, or stopped with partial failure). **If** you stopped earlier (e.g. ingest or OCR blocker), run it **immediately before** your **Final Response** to the user instead.
+
+1. Read the **ntfy** skill at **`shared/skills/ntfy/SKILL.md`** (workspace / repo root) and follow it.
+2. Use `code` to run **`ntfy-send`** as documented there (bare `ntfy-send` on PATH in Pi when promoted; otherwise invoke the skill’s `scripts/ntfy-send` with the message). Send **exactly one** notification.
+3. **Message body:** **1–2 sentences** only.
+   - **On success:** State that OCR finished successfully; mention only the **PDF file name** (basename). Do not list manifests, paths, or page counts — the orchestrator already knows the outcome.
+   - **On failure or early stop:** State that OCR failed or stopped early; give the **primary blocker** in one short phrase; include the **PDF file name** if known. Do not list artifact paths.
+4. Optional: `ntfy-send --title "OCR"` per the skill; default topic unless the user configured otherwise in the skill.
+5. If `ntfy-send` is unavailable or exits with a configuration error, **do not** retry in a loop — omit push and mention the skip briefly in your **Final Response** below.
+
 ## Artifact Conventions
 
 All paths below are **under `PDF_HOME`**, beside the single PDF file:

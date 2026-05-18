@@ -2,7 +2,7 @@
 
 Use top-level capability agents to ingest a research-paper PDF (typical **arXiv** layout: vector text plus embedded raster figures), render each page to an image, **extract embedded images to `figures-png/` with page provenance**, OCR each page into markdown, **embed figure links into the per-page markdown**, optionally audit uncertain pages, and optionally assemble a full document or summary. This workflow matches the quality bar of the legacy **reader** MAS: an `ocr-manifest.json` index, page-by-page transcription with explicit uncertainty markers, resumable progress when page images already exist, plus **`figures-manifest.json`** for extracted figures.
 
-**PDF-scoped layout (required):** After the PDF path is resolved, define **`PDF_HOME`** as the **directory containing that PDF file**. Assume **one PDF per directory** for this workflow. **`pages-png/`**, **`pages-ocr/`**, **`figures-png/`**, **`ocr-manifest.json`**, and **`figures-manifest.json`** must all live **in `PDF_HOME`**, as siblings of the `.pdf` file — never under an unrelated working directory or workspace root. Paths inside manifests are **relative to `PDF_HOME`** (e.g. `pages-png/page-03.png` → `pages-ocr/page-03.md`). **Naming:** Poppler `pdftoppm` picks `page-<digits>.png` zero-padding from page count; do not assume a fixed digit count. Pair each PNG with markdown using the **same basename stem**; `ocr-manifest.json` lists the exact paths. **Figures:** extracted files live under **`figures-png/`** with names assigned by the Phase 5 worker (see Phase 5); **`figures-manifest.json`** lists each figure’s **`pdf_page`** (1-based, from Poppler `pdfimages -list`) and **`path`**.
+**PDF-scoped layout (required):** After the PDF path is resolved, define **`PDF_HOME`** as the **directory containing that PDF file**. Assume **one PDF per directory** for this workflow. **`pages-png/`**, **`pages-ocr/`**, **`figures-png/`**, **`ocr-manifest.json`**, and **`figures-manifest.json`** must all live **in `PDF_HOME`**, as siblings of the `.pdf` file — never under an unrelated working directory or workspace root. Paths inside manifests are **relative to `PDF_HOME`** (e.g. `pages-png/page-03.png` → `pages-ocr/page-03.md`). **Naming:** Poppler `pdftoppm` picks `page-<digits>.png` zero-padding from page count; do not assume a fixed digit count. Pair each PNG with markdown using the **same basename stem**; `ocr-manifest.json` lists the exact paths. **Figures:** extracted files live under **`figures-png/`** with names assigned by the Phase 5 worker (see Phase 5); **`figures-manifest.json`** lists each figure’s **`pdf_page`** (1-based, from Poppler `pdfimages -list`) and **`path`** (still relative to **`PDF_HOME`**, e.g. `figures-png/fig-p03-001.png`). **Markdown under `pages-ocr/`:** In the body (and optional YAML `figures:`), image URLs **must** be **`../figures-png/<filename>.png`** — i.e. prefix **`../`** to the manifest `path` so links resolve from inside **`pages-ocr/`** (required layout). Do **not** use bare `figures-png/...` in `pages-ocr/*.md`.
 
 ## Goal
 
@@ -124,7 +124,7 @@ Steps:
 1. Read the image with a vision-capable model. If you cannot load the image, reply with failure — do not invent text.
 2. Transcribe visible text faithfully; preserve headings, lists, tables, footnotes, captions (including “Figure K:”), headers/footers, page numbers where useful. Figures may appear as blank areas or brief placeholders like `[diagram]` — that is acceptable; do not invent full descriptions of plots.
 3. Use `[unclear: ...]` for uncertain text; never invent content.
-4. **Do not** add markdown image links (`![](figures-png/...)`) or HTML `<img>` tags; a later phase inserts figure files. Do not invent placeholder paths for figures.
+4. **Do not** add markdown image links (`![](../figures-png/...)` or bare `figures-png/`) or HTML `<img>` tags; a later phase inserts figure files. Do not invent placeholder paths for figures.
 5. Write exactly one markdown file using the `write` tool with YAML frontmatter:
 
 ---
@@ -166,11 +166,11 @@ Given (resolve all paths relative to PDF_HOME or as absolute/workspace paths giv
 Steps:
 1. Read the existing OCR markdown. Do not remove or rewrite unrelated transcription except as needed to insert images.
 2. **Placement (priority):**
-   a. If the body contains caption patterns such as `Figure K:`, `Figure K.`, `Fig. K`, `Fig K` (arXiv/LaTeX style), and you can **confidently** match figure **K** to a specific file (e.g. only one figure on the page, or order matches top-to-bottom reading of the optional page PNG), insert a markdown image line **immediately before** that caption block (preferred) or **immediately after** if it reads more naturally. Use alt text derived from the caption line or `Figure K (page P)`.
-   b. Otherwise append a section at the **end** of the body (after all transcribed text): `## Figures on this page` (use `###` if a `##` already exists nearby — stay consistent with document style), then one line per figure: `![<alt>](<path>)` where `<path>` is exactly as in the manifest (relative to `PDF_HOME`, e.g. `figures-png/fig-p07-001.png`). Order figures by manifest list order or, if you used the page PNG, top-to-bottom visual order.
-3. **Paths:** Use manifest paths as in `![](figures-png/fig-p07-001.png)` (relative paths as stored in `figures-manifest.json`).
-4. **Idempotency:** If the markdown already contains `![](<that exact path>)` or `![...](<that exact path>)` for a figure, do not duplicate it; leave existing link or replace in place only if broken.
-5. **Frontmatter:** Optionally add or merge `figures:` in YAML as a list of the relative paths embedded on this page. Do not duplicate YAML keys.
+   a. If the body contains caption patterns such as `Figure K:`, `Figure K.`, `Fig. K`, `Fig K` (arXiv/LaTeX style), and you can **confidently** match figure **K** to a specific file (e.g. only one figure on the page, or order matches top-to-bottom reading of the optional page PNG), insert a markdown image line **immediately before** that caption block (preferred) or **immediately after** if it reads more naturally. Use alt text derived from the caption line or `Figure K (page P)`. The **URL** in that line **must** be **`../` + manifest `path`** (same rule as step 3 — always **`../figures-png/...`** inside `pages-ocr/*.md`).
+   b. Otherwise append a section at the **end** of the body (after all transcribed text): `## Figures on this page` (use `###` if a `##` already exists nearby — stay consistent with document style), then one line per figure: `![<alt>](<markdown_path>)` where `<markdown_path>` is **`../`** plus the figure’s `path` from the manifest (manifest uses `figures-png/...` relative to **`PDF_HOME`**; page markdown **must** use **`../figures-png/fig-p07-001.png`** style so the link resolves from **`pages-ocr/`**). Example: manifest `figures-png/fig-p02-001.png` → markdown `../figures-png/fig-p02-001.png`. Order figures by manifest list order or, if you used the page PNG, top-to-bottom visual order.
+3. **Paths (required):** Every `![](...)` / `![alt](...)` in **`pages-ocr/*.md`** **must** start with **`../figures-png/`** for extracted figures. Derive the string as **`../` + `path`** from `figures-manifest.json` (do not write bare `figures-png/...` in page markdown).
+4. **Idempotency:** If the markdown already contains the correct `![](../figures-png/<same-basename>)` (or `![...](../figures-png/<same-basename>)`) for a figure, do not duplicate it. If an old link uses bare `figures-png/...`, replace it with the **`../figures-png/...`** form when touching that figure.
+5. **Frontmatter:** Optionally add or merge `figures:` in YAML as a list of **`../figures-png/...`** strings matching the inserted links. Do not duplicate YAML keys.
 6. **Do not** update `figures-manifest.json` from this task (parallel workers would race). Leave `embedded_in` null unless a separate single-threaded merge step is explicitly requested by the user.
 7. Replace the markdown file with `write` once.
 
@@ -190,7 +190,7 @@ You are the page auditor. Audit exactly one page.
 
 Inputs: page number <n>, image path <path.png>, markdown path <path.md>
 
-1. Read the image and the existing markdown (including any `![](figures-png/...)` links added in Phase 7).
+1. Read the image and the existing markdown (including any `![](../figures-png/...)` links added in Phase 7).
 2. Fix omissions, misreads, table structure, captions; keep `[unclear: ...]` where the image does not support a better reading. **Do not** remove valid figure image links; ensure captions still sit next to the correct figure where obvious.
 3. Replace the markdown file with `write` once; keep frontmatter but update confidence, needs_review, warnings to match the audited state.
 4. Do not update `ocr-manifest.json`.
@@ -208,7 +208,7 @@ You are the document assembler.
 
 - Work in **`PDF_HOME`**. Read **`PDF_HOME/ocr-manifest.json`** and each per-page markdown file at `PDF_HOME/<pages[].markdown>`.
 - Order pages by **numeric** `page` from `ocr-manifest.json` `pages[]` (or from each file’s YAML frontmatter `page:` after reading). Do **not** rely on lexical sort of `pages-ocr/page-*.md` filenames.
-- If the user asked for a full transcript: write **`PDF_HOME/document.md`** starting with the title `# OCR Document`, a line `Source manifest: ocr-manifest.json` (same folder as this file), a short HTML comment that content was transcribed from images, then `## Page N` sections in order with page body content. **Preserve** markdown figure links (`![](figures-png/...)`) as copied from each page — paths are relative to `PDF_HOME`. Do not strip `[unclear: ...]` markers or warnings.
+- If the user asked for a full transcript: write **`PDF_HOME/document.md`** starting with the title `# OCR Document`, a line `Source manifest: ocr-manifest.json` (same folder as this file), a short HTML comment that content was transcribed from images, then `## Page N` sections in order with page body content. **Figure links:** Page files use `../figures-png/...` because they live under `pages-ocr/`. **`document.md`** lives in **`PDF_HOME`**, so when copying each page body, **rewrite** every figure URL from **`../figures-png/`** to **`figures-png/`** (same basename) so markdown resolves from **`document.md`**. Do not strip `[unclear: ...]` markers or warnings.
 - If the user asked for a summary: write **`PDF_HOME/summary.md`** from the OCR text; note pages with needs_review or low confidence.
 - Do not modify files under `pages-ocr/` (or `pages-png/` or `figures-png/`) except through this task only for new assembled outputs — i.e. do not “fix” page files here.
 - Use `write` once per output file you were asked to create.
@@ -223,12 +223,24 @@ Use your own `read` (and `ls` / `find` if needed) under **`PDF_HOME`** to confir
 - **`PDF_HOME/ocr-manifest.json`** exists; `page_count` matches **N** `PDF_HOME/pages-png/page-*.png` with contiguous suffixes `1…N` as in Phase 3.
 - Each `pages[].image` and each `pages[].markdown` exists **under `PDF_HOME`** after OCR.
 - **`PDF_HOME/figures-manifest.json`** exists when Phase 5 ran or was skipped with a valid prior manifest; each `figures[].path` exists; each `pdf_page` ∈ `{1,…,N}`.
-- For each `pdf_page` that has figures in the manifest, the corresponding `pages-ocr/page-<stem>.md` contains a `![](figures-png/...)` (or equivalent `![alt](figures-png/...)`) for each expected path **or** a `## Figures on this page` (or `### Figures on this page`) section listing them — unless Phase 7 was skipped due to zero figures.
-- Any promised **`PDF_HOME/document.md`** / **`PDF_HOME/summary.md`** exist.
+- For each `pdf_page` that has figures in the manifest, the corresponding `pages-ocr/page-<stem>.md` contains `![](../figures-png/...)` (or `![alt](../figures-png/...)`) for each expected basename **or** a `## Figures on this page` (or `### Figures on this page`) section listing them with the same **`../figures-png/`** prefix — unless Phase 7 was skipped due to zero figures.
+- If **`PDF_HOME/document.md`** was produced, spot-check that stitched figure links use **`figures-png/...`** (not **`../figures-png/...`**) so they resolve from **`PDF_HOME`**.
 
 If you use `chat` (for example persona `judge`) for a quality rubric, pass **inline excerpts** or criteria only — never ask `chat` to open a path or URL.
 
 If validation fails, run at most one repair pass (`code` for page or embed fixes, `write` for assembly issues), then re-check. If still failing, stop with partial artifact paths.
+
+### 11. Completion notify (ntfy)
+
+Run this phase **exactly once** when the workflow ends for the user. **If** you reached **Phase 10**, run it **after** validation (whether fully successful, successful after one repair pass, or stopped with partial failure). **If** you stopped earlier (e.g. ingest, figure extract, OCR, or embed blocker), run it **immediately before** your **Final Response** to the user instead.
+
+1. Read the **ntfy** skill at **`shared/skills/ntfy/SKILL.md`** (workspace / repo root) and follow it.
+2. Use `code` to run **`ntfy-send`** as documented there (bare `ntfy-send` on PATH in Pi when promoted; otherwise invoke the skill’s `scripts/ntfy-send` with the message). Send **exactly one** notification.
+3. **Message body:** **1–2 sentences** only.
+   - **On success:** State that OCR finished successfully; mention only the **PDF file name** (basename). Do not list manifests, paths, or page counts — the orchestrator already knows the outcome.
+   - **On failure or early stop:** State that OCR failed or stopped early; give the **primary blocker** in one short phrase; include the **PDF file name** if known. Do not list artifact paths.
+4. Optional: `ntfy-send --title "OCR"` per the skill; default topic unless the user configured otherwise in the skill.
+5. If `ntfy-send` is unavailable or exits with a configuration error, **do not** retry in a loop — omit push and mention the skip briefly in your **Final Response** below.
 
 ## Artifact Conventions
 
@@ -236,7 +248,7 @@ All paths below are **under `PDF_HOME`**, beside the single PDF file:
 
 - `pages-png/page-<digits>.png`, … — page renders; basenames from the renderer (typically Poppler).
 - `pages-ocr/page-<digits>.md`, … — per-page OCR markdown with the **same stem** as the PNG; YAML frontmatter `image:` must point at the matching `pages-png/...` path.
-- `figures-png/fig-p<page>-<k>.png`, … — extracted raster figures (naming from Phase 5 contract; exact names in `figures-manifest.json`).
+- `figures-png/fig-p<page>-<k>.png`, … — on-disk paths relative to `PDF_HOME` (see `figures-manifest.json`). In **`pages-ocr/*.md`** only, markdown image targets use **`../figures-png/...`**; in **`document.md`** (under `PDF_HOME`), use **`figures-png/...`** after assembly rewrite.
 - `ocr-manifest.json` — ingestion metadata and page index.
 - `figures-manifest.json` — extracted figures with `pdf_page` and paths.
 - `document.md` / `summary.md` — only when requested; written in `PDF_HOME`.
