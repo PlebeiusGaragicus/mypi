@@ -108,7 +108,7 @@ If extraction reports missing `pdfimages` or unreadable PDF, stop and report to 
 
 Identify every page that still needs OCR using **`PDF_HOME/ocr-manifest.json`**: resolve each `pages[].image` and `pages[].markdown` **relative to `PDF_HOME`**. A page needs work when the markdown file is missing on disk, or `ocr_status` / worker notes indicate `pending` or `failed`. Each `markdown` path should use the **same basename stem** as `pages[].image` (e.g. `pages-png/page-12.png` → `pages-ocr/page-12.md`).
 
-Dispatch `code` in parallel `tasks[]`, **one task per page**, each naming exactly one **absolute or workspace-relative** image path, page number, and output markdown path (join `PDF_HOME` with manifest paths when dispatching). Keep each `subagent` batch to **at most 8** parallel tasks. Repeat batches until all targeted pages have markdown.
+Dispatch `code` in parallel `tasks[]`, **one task per page**, each naming exactly one **absolute or workspace-relative** image path, page number, and output markdown path (join `PDF_HOME` with manifest paths when dispatching). Repeat parallel `subagent` dispatches until all targeted pages have markdown.
 
 Each OCR task must include this contract:
 
@@ -150,7 +150,7 @@ If many pages fail with “vision model unavailable,” stop and report the conf
 
 After **all** targeted `pages-ocr/*.md` files from **`PDF_HOME/ocr-manifest.json`** exist with OCR complete, embed figure links.
 
-Read **`PDF_HOME/figures-manifest.json`**. Group `figures[]` by **`pdf_page`**. Dispatch `code` in parallel `tasks[]`, **one task per PDF page that has at least one figure**, with batch size **at most 8**. Skip pages with zero figures.
+Read **`PDF_HOME/figures-manifest.json`**. Group `figures[]` by **`pdf_page`**. Dispatch `code` in parallel `tasks[]`, **one task per PDF page that has at least one figure**. Skip pages with zero figures.
 
 Each embed task must include this contract:
 
@@ -181,7 +181,7 @@ If **`figures-manifest.json`** is missing or has no figures, skip this phase (no
 
 ### 8. Optional Page Audit
 
-If OCR confirmations flag `needs_review: true`, low confidence, or dense table/diagram warnings, dispatch `code` in parallel (same batch size cap **8**), **one audit task per flagged page**.
+If OCR confirmations flag `needs_review: true`, low confidence, or dense table/diagram warnings, dispatch `code` in parallel `tasks[]`, **one audit task per flagged page**.
 
 Each audit task:
 

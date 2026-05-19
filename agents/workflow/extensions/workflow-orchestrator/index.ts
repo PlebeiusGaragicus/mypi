@@ -21,7 +21,7 @@ const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..
 const CORE_AGENT_NAMES = ["chat", "scout", "write", "code", "web"] as const;
 type CoreAgentName = (typeof CORE_AGENT_NAMES)[number];
 
-const MAX_PARALLEL_TASKS = 10;
+const MAX_PARALLEL_TASKS = 100;
 
 type InvocationMode = "single" | "parallel" | "chain";
 

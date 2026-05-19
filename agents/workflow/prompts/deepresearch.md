@@ -33,7 +33,7 @@ If the scout reports repeated empty results, missing provider keys, rate limits,
 
 ### 3. Parallel Source Collection
 
-Parse the scout's numbered source list. Dispatch `web` in parallel `tasks[]`, one collector task per URL, with a unique collector number. Keep each parallel batch to at most 10 tasks.
+Parse the scout's numbered source list. Dispatch `web` in parallel `tasks[]`, one collector task per URL, with a unique collector number.
 
 Each collector task must include this contract:
 
