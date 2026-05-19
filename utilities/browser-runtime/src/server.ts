@@ -32,6 +32,7 @@ import { resolveConfig, ensureStateDir, readVersionHash } from './config';
 import { initAuditLog, writeAuditEntry } from './audit';
 import { safeUnlink, safeUnlinkQuiet } from './error-handling';
 import { detectChallenge, appendChallengeBanner } from './challenge-detection';
+import { startParentWatchdog, stopParentWatchdog, onBrowserEnterHeadedMode } from './server-lifecycle';
 import { consoleBuffer, networkBuffer, dialogBuffer } from './buffers';
 import * as fs from 'fs';
 import * as net from 'net';
@@ -53,6 +54,7 @@ const NETWORK_LOG_PATH = config.networkLog;
 const DIALOG_LOG_PATH = config.dialogLog;
 
 const browserManager = new BrowserManager();
+browserManager.onEnterHeadedMode = () => onBrowserEnterHeadedMode();
 
 let lastActivity = Date.now();
 let lastConsoleFlushed = 0;
@@ -310,6 +312,7 @@ async function shutdown(exitCode = 0): Promise<void> {
   if (isShuttingDown) return;
   isShuttingDown = true;
   console.log('[browse] Shutting down...');
+  stopParentWatchdog();
   clearInterval(flushInterval);
   clearInterval(idleCheckInterval);
   await flushBuffers();
@@ -401,15 +404,14 @@ async function start(): Promise<void> {
   }, 60_000);
 
   const parentPid = parseInt(process.env.BROWSE_PARENT_PID || '', 10);
-  if (parentPid > 0) {
-    setInterval(() => {
-      try {
-        process.kill(parentPid, 0);
-      } catch {
-        console.log('[browse] Parent process exited — shutting down');
-        shutdown(0);
-      }
-    }, 15_000);
+  startParentWatchdog(parentPid, () => {
+    console.log('[browse] Parent process exited — shutting down');
+    shutdown(0);
+  });
+
+  // connect / BROWSE_HEADED=1: no CLI parent watchdog; still persist headed mode
+  if (process.env.BROWSE_HEADED === '1') {
+    onBrowserEnterHeadedMode();
   }
 }
 

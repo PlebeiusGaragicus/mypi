@@ -11,5 +11,6 @@ pi
 my-pi-setup
 
 # browser-runtime
+.browser-control
 utilities/browser-runtime/node_modules
 utilities/browser-runtime/dist

@@ -59,7 +59,7 @@ After `goto`, `text`, or `snapshot`, stdout may include `--- CHALLENGE_DETECTED:
 | `BROWSE_HEADED_PORT` | Fixed port for headed `connect` (default `34567`) |
 | `BROWSE_IDLE_TIMEOUT` | Idle shutdown ms (default 1800000) |
 | `BROWSE_PORT` | Fixed server port (default random 10000–60000) |
-| `BROWSE_PARENT_PID` | Set `0` to disable parent watchdog (headed mode) |
+| `BROWSE_PARENT_PID` | CLI parent PID for autostart watchdog; set `0` to disable. Watchdog auto-stops after `handoff` / `connect` (headed browser stays open). |
 
 ## Development
 

@@ -50,7 +50,7 @@ Create:
   date_fetched: <ISO timestamp if available>
   screenshot: screenshots/<slug>.png or null
 - screenshots/<slug>.png when browser-control can render the page.
-- On `CHALLENGE_DETECTED` from `$B`, run handoff, notify the user, and resume only after the challenge is cleared.
+- On `CHALLENGE_DETECTED` from `$B`, run handoff, notify the user, and resume only after the challenge is cleared. Do not use curl on the same URL as a bypass.
 
 The source file must contain cleaned main content, important quotations or facts, and a short source summary. Preserve URLs. If access fails, do not invent content; save a screenshot or issue note when useful and return the failure clearly.
 

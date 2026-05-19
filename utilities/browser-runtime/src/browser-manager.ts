@@ -100,6 +100,8 @@ export class BrowserManager {
   // (sidebar-agent, state file, profile locks) before exiting with code 2.
   // Returns void or a Promise; rejections are caught and fall back to exit(2).
   public onDisconnect: (() => void | Promise<void>) | null = null;
+  /** Fired when headed mode becomes active (connect, handoff, launchHeaded). */
+  public onEnterHeadedMode: (() => void) | null = null;
 
   getConnectionMode(): 'launched' | 'headed' { return this.connectionMode; }
 
@@ -466,6 +468,16 @@ export class BrowserManager {
     this.dialogAutoAccept = false;  // Don't dismiss user's real dialogs
     this.isHeaded = true;
     this.consecutiveFailures = 0;
+    this.notifyEnterHeadedMode();
+  }
+
+  private notifyEnterHeadedMode(): void {
+    try {
+      this.onEnterHeadedMode?.();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn('[browse] onEnterHeadedMode failed:', msg);
+    }
   }
 
   async close() {
@@ -1146,6 +1158,8 @@ export class BrowserManager {
       // 4. Close old headless browser (fire-and-forget)
       oldBrowser.removeAllListeners('disconnected');
       oldBrowser.close().catch(() => {});
+
+      this.notifyEnterHeadedMode();
 
       return [
         `HANDOFF: Browser opened at ${currentUrl}`,
