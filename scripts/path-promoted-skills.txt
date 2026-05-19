@@ -7,3 +7,5 @@ todo
 ntfy
 arxiv-search
 congress-search
+tavily-search
+exa-search

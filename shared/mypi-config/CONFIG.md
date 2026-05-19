@@ -32,6 +32,8 @@ Each consumer calls `ensure*` on first use and persists missing keys:
 | `say.ts` / `/tts-wpm` | `tts.wpm` | `300` |
 | `ntfy-send` | `NTFY_BASE_URL`, `NTFY_USER`, `NTFY_PASSWORD` | `""` |
 | `congress-search` | `CONGRESS_GOV_API_KEY` | `""` |
+| `tavily-search` | `TAVILY_API_KEY` | `""` |
+| `exa-search` | `EXA_API_KEY` | `""` |
 
 ## Precedence
 

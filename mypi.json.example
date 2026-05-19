@@ -4,6 +4,8 @@
     "NTFY_BASE_URL": "",
     "NTFY_USER": "",
     "NTFY_PASSWORD": "",
-    "CONGRESS_GOV_API_KEY": ""
+    "CONGRESS_GOV_API_KEY": "",
+    "TAVILY_API_KEY": "",
+    "EXA_API_KEY": ""
   }
 }

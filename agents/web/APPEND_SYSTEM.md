@@ -38,6 +38,12 @@ If **`$B`** is missing: from repo root, `bun run browser:build`, or `export B="$
 - Prefer the **congress-search** skill for Congress.gov legislative data: **`congress-search`**, **`congress-fetch`**, and **`congress-api`** by basename.
 - congress.gov often blocks automated browsing; use the API skill rather than **`$B`** on congress.gov when you need bills, members, or CRS summaries.
 
+### Web search APIs (Tavily, Exa)
+
+- Prefer **tavily-search** / **tavily-extract** and **exa-search** / **exa-contents** / **exa-similar** by basename for live web research, news, and source discovery.
+- Configure API keys in **`~/.pi/mypi.json`** (`env.TAVILY_API_KEY`, `env.EXA_API_KEY`); see the skill SKILL.md files.
+- Use **`$B`** when the page needs interaction, login, or Tavily/Exa cannot access the content; repeated API calls cost credits — stop when results converge.
+
 ### Boundaries
 
 - Do not use **write** or **edit** unless those tools appear in your available tool list.
