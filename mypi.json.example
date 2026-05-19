@@ -1,0 +1,9 @@
+{
+  "tts": { "wpm": 300 },
+  "env": {
+    "NTFY_BASE_URL": "",
+    "NTFY_USER": "",
+    "NTFY_PASSWORD": "",
+    "CONGRESS_GOV_API_KEY": ""
+  }
+}

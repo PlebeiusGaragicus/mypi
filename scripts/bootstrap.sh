@@ -32,4 +32,10 @@ if [[ -n "$_prefix" ]]; then
 	export PATH="${_prefix}${PATH:+:${PATH}}"
 fi
 
-unset _mypi_root _list _line _abs _prefix
+_apply_env="${_mypi_root}/shared/mypi-config/apply-shell-env.mjs"
+if [[ -f "$_apply_env" ]]; then
+	# shellcheck disable=SC1090
+	eval "$(node "$_apply_env")"
+fi
+
+unset _mypi_root _list _line _abs _prefix _apply_env

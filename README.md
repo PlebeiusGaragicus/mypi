@@ -10,6 +10,8 @@ It provides:
 1. scripts for controlling a self-hosted LM Studio or Ollama homelab
 1. leaves your "vanilla" `pi` installation alone
 
+User settings (API keys, ntfy, TTS speed) are stored in **`~/.pi/mypi.json`**. Copy [`mypi.json.example`](mypi.json.example) as a starting point or let extensions create keys on first use. See [`shared/mypi-config/CONFIG.md`](shared/mypi-config/CONFIG.md).
+
 ## Install and Run
 
 Install as a Pi package:

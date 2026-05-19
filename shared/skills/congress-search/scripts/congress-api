@@ -1,0 +1,86 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import sys
+
+from _congress_client import api_request, fetch_pages, format_datetime_param, normalize_path
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Call the Congress.gov API v3 (JSON).",
+        epilog=(
+            "Examples:\n"
+            "  congress-api /congress/current\n"
+            "  congress-api /bill/118/hr/3076/summaries --limit 5\n"
+            "  congress-api /member/congress/118/CA --json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("path", help="API path, e.g. /bill/118/hr/3076")
+    parser.add_argument("--limit", type=int, help="limit query param (max 250)")
+    parser.add_argument("--offset", type=int, help="offset query param")
+    parser.add_argument("--from", dest="from_date", metavar="DATE", help="fromDateTime (YYYY-MM-DD)")
+    parser.add_argument("--to", dest="to_date", metavar="DATE", help="toDateTime (YYYY-MM-DD)")
+    parser.add_argument("--sort", help="sort query param, e.g. updateDate+desc")
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=1,
+        help="follow pagination.next up to N pages (default: 1)",
+    )
+    parser.add_argument("--json", action="store_true", help="compact JSON output")
+    parser.add_argument(
+        "--list-key",
+        help="when --max-pages > 1, merge items under this key (auto-detect if omitted)",
+    )
+    return parser.parse_args()
+
+
+def build_query(args: argparse.Namespace) -> dict[str, str | int]:
+    query: dict[str, str | int] = {}
+    if args.limit is not None:
+        query["limit"] = min(max(args.limit, 1), 250)
+    if args.offset is not None:
+        query["offset"] = max(args.offset, 0)
+    if args.from_date:
+        query["fromDateTime"] = format_datetime_param(args.from_date)
+    if args.to_date:
+        query["toDateTime"] = format_datetime_param(args.to_date)
+    if args.sort:
+        query["sort"] = args.sort
+    return query
+
+
+def main() -> int:
+    args = parse_args()
+    path = normalize_path(args.path)
+    if not path:
+        print("Error: no API path provided", file=sys.stderr)
+        return 1
+
+    try:
+        query = build_query(args)
+        if args.max_pages > 1:
+            items = fetch_pages(
+                path,
+                query=query or None,
+                max_pages=args.max_pages,
+                list_key=args.list_key,
+            )
+            payload = {"path": path, "items": items, "count": len(items)}
+            text = json.dumps(payload, indent=None if args.json else 2)
+        else:
+            data = api_request(path, query=query or None)
+            text = json.dumps(data, indent=None if args.json else 2)
+
+        print(text)
+        return 0
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

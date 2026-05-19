@@ -16,7 +16,7 @@
  * - Fenced code blocks (```) are omitted from speech entirely; exception: ```txt and ```markdown
  *   fences have their content spoken (fence lines themselves are always omitted).
  * - Only runs when `ctx.hasUI` (interactive TUI) and a TTS backend is available.
- * - Speech rate: per-device WPM stored in `~/.pi/tts-wpm` (default 250). Adjust with `/tts-wpm`.
+ * - Speech rate: per-device WPM stored in `~/.pi/mypi.json` (`tts.wpm`, default 300). Adjust with `/tts-wpm`.
  * - A new user prompt, `/stop-speaking`, `/tts-toggle off`, or pi exiting all cancel speech.
  *
  * Platform backends are selected inline. Currently: macOS `say`, Linux `espeak-ng`.
@@ -27,9 +27,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
+import { ensureTtsWpm, setTtsWpm } from "../../shared/mypi-config/ensure.js";
 
 interface TtsBackend {
 	name: string;
@@ -81,35 +79,9 @@ const backend = resolveBackend();
 
 const URL_REDACTED = "URL redacted";
 const MAX_CHARS = 32_000;
-const DEFAULT_WPM = 250;
+const DEFAULT_WPM = 300;
 
-/** Plain Pi user config file (not tied to DOT_PI_OVERLAY / dot-pi). */
-function ttsWpmPath(): string {
-	return path.join(os.homedir(), ".pi", "tts-wpm");
-}
-
-function loadWpm(): number {
-	try {
-		const wpmPath = ttsWpmPath();
-		if (!fs.existsSync(wpmPath)) return DEFAULT_WPM;
-		const val = parseInt(fs.readFileSync(wpmPath, "utf-8").trim(), 10);
-		return Number.isFinite(val) && val > 0 ? val : DEFAULT_WPM;
-	} catch {
-		return DEFAULT_WPM;
-	}
-}
-
-function saveWpm(wpm: number): void {
-	try {
-		const file = ttsWpmPath();
-		fs.mkdirSync(path.dirname(file), { recursive: true });
-		fs.writeFileSync(file, String(wpm) + "\n", "utf-8");
-	} catch {
-		/* ignore — root dir may not be writable */
-	}
-}
-
-/** Words per minute; loaded from ~/.pi/tts-wpm on session_start, adjustable via /tts-wpm */
+/** Words per minute; loaded from ~/.pi/mypi.json on session_start, adjustable via /tts-wpm */
 let currentWpm = DEFAULT_WPM;
 
 /** In-memory; synced from `--tts-enable` on every session_start; `/tts-toggle` until next session_start */
@@ -415,9 +387,11 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async () => {
 		autoTtsEnabled = pi.getFlag("tts-enable") === true;
-		currentWpm = loadWpm();
-		const wpmPath = ttsWpmPath();
-		if (!fs.existsSync(wpmPath)) saveWpm(DEFAULT_WPM);
+		try {
+			currentWpm = ensureTtsWpm(DEFAULT_WPM);
+		} catch {
+			currentWpm = DEFAULT_WPM;
+		}
 	});
 
 	pi.on("before_agent_start", async () => {
@@ -545,7 +519,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("tts-wpm", {
-		description: "Get or set TTS words-per-minute (persists to ~/.pi/tts-wpm)",
+		description: "Get or set TTS words-per-minute (persists to ~/.pi/mypi.json tts.wpm)",
 		handler: async (args, ctx) => {
 			if (!ctx.hasUI) return;
 			const a = args.trim();
@@ -559,7 +533,11 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 			currentWpm = val;
-			saveWpm(val);
+			try {
+				setTtsWpm(val);
+			} catch {
+				/* ignore — config dir may not be writable */
+			}
 			ctx.ui.notify(`TTS speed set to ${val} WPM`, "info");
 		},
 	});

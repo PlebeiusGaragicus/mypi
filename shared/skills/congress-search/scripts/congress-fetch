@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+import textwrap
+from pathlib import Path
+from typing import Any
+
+from _congress_client import (
+    api_request,
+    congress_gov_bill_url,
+    format_bill_citation,
+    latest_action_date,
+    latest_action_text,
+    parse_bill_ref,
+    strip_html,
+)
+
+DEFAULT_SECTIONS = ("summaries", "actions", "cosponsors")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Fetch a single bill from Congress.gov API v3.",
+        epilog=(
+            "Examples:\n"
+            "  congress-fetch 118 hr 3076\n"
+            "  congress-fetch 118-HR-3076 --sections summaries,actions\n"
+            "  congress-fetch 118 hr 3076 --output /tmp/bill.txt"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "bill",
+        nargs="+",
+        help="CONGRESS TYPE NUMBER, or 118-HR-3076",
+    )
+    parser.add_argument(
+        "--sections",
+        default=",".join(DEFAULT_SECTIONS),
+        help=f"comma-separated sections (default: {','.join(DEFAULT_SECTIONS)})",
+    )
+    parser.add_argument(
+        "--max-chars",
+        type=int,
+        metavar="N",
+        help="truncate stdout to N characters",
+    )
+    parser.add_argument("--output", help="write full report to this path")
+    return parser.parse_args()
+
+
+def fetch_section(path: str) -> dict[str, Any]:
+    return api_request(path)
+
+
+def format_cosponsors(data: dict[str, Any]) -> str:
+    cosponsors = data.get("cosponsors")
+    if isinstance(cosponsors, list):
+        names = [str(c.get("fullName") or c.get("name") or "") for c in cosponsors if isinstance(c, dict)]
+        names = [n for n in names if n]
+        if names:
+            return f"Cosponsors ({len(names)}): " + "; ".join(names[:15]) + (
+                " ..." if len(names) > 15 else ""
+            )
+    count = data.get("cosponsors", data.get("count"))
+    if isinstance(count, dict):
+        total = count.get("count") or count.get("total")
+        if total is not None:
+            return f"Cosponsors: {total}"
+    if isinstance(count, int):
+        return f"Cosponsors: {count}"
+    return ""
+
+
+def format_actions(data: dict[str, Any]) -> str:
+    actions = data.get("actions")
+    if not isinstance(actions, list):
+        return ""
+    lines = ["Actions (recent):"]
+    for action in actions[:12]:
+        if not isinstance(action, dict):
+            continue
+        date = action.get("actionDate") or ""
+        text = action.get("text") or ""
+        lines.append(f"  - {date}: {text}".rstrip())
+    if len(actions) > 12:
+        lines.append(f"  ... ({len(actions) - 12} more)")
+    return "\n".join(lines)
+
+
+def format_summaries(data: dict[str, Any]) -> str:
+    summaries = data.get("summaries")
+    if not isinstance(summaries, list) or not summaries:
+        return ""
+    lines = ["Summaries:"]
+    for summary in summaries[:3]:
+        if not isinstance(summary, dict):
+            continue
+        action = summary.get("actionDesc") or summary.get("versionCode") or ""
+        text = strip_html(str(summary.get("text") or ""))
+        if action:
+            lines.append(f"  [{action}]")
+        if text:
+            wrapped = textwrap.wrap(text, width=88)
+            for line in wrapped[:12]:
+                lines.append(f"  {line}")
+            if len(wrapped) > 12:
+                lines.append("  ...")
+    return "\n".join(lines)
+
+
+def build_report(
+    congress: int,
+    bill_type: str,
+    number: int,
+    sections: set[str],
+) -> str:
+    base = f"bill/{congress}/{bill_type}/{number}"
+    bill_data = api_request(base)
+    bill = bill_data.get("bill")
+    if isinstance(bill, list) and bill:
+        bill = bill[0]
+    if not isinstance(bill, dict):
+        bill = bill_data
+
+    title = str(bill.get("title") or "(untitled)")
+    citation = format_bill_citation(congress, bill_type, number)
+    url = congress_gov_bill_url(congress, bill_type, number)
+
+    lines = [
+        citation,
+        title,
+        f"URL: {url}",
+    ]
+
+    introduced = bill.get("introducedDate")
+    if introduced:
+        lines.append(f"Introduced: {introduced}")
+
+    sponsor = bill.get("sponsors")
+    if isinstance(sponsor, list) and sponsor:
+        first = sponsor[0]
+        if isinstance(first, dict):
+            lines.append(f"Sponsor: {first.get('fullName') or first.get('name') or ''}")
+    elif isinstance(sponsor, dict):
+        lines.append(f"Sponsor: {sponsor.get('fullName') or sponsor.get('name') or ''}")
+
+    action = latest_action_text(bill)
+    if action:
+        lines.append(f"Latest action: {action}")
+    adate = latest_action_date(bill)
+    if adate:
+        lines.append(f"Latest action date: {adate}")
+
+    policy = bill.get("policyArea")
+    if isinstance(policy, dict) and policy.get("name"):
+        lines.append(f"Policy area: {policy['name']}")
+
+    lines.append("")
+
+    if "summaries" in sections:
+        try:
+            summary_block = format_summaries(fetch_section(f"{base}/summaries"))
+            if summary_block:
+                lines.append(summary_block)
+                lines.append("")
+        except RuntimeError as exc:
+            lines.append(f"(summaries unavailable: {exc})")
+            lines.append("")
+
+    if "actions" in sections:
+        try:
+            action_block = format_actions(fetch_section(f"{base}/actions"))
+            if action_block:
+                lines.append(action_block)
+                lines.append("")
+        except RuntimeError as exc:
+            lines.append(f"(actions unavailable: {exc})")
+            lines.append("")
+
+    if "cosponsors" in sections:
+        try:
+            cos_block = format_cosponsors(fetch_section(f"{base}/cosponsors"))
+            if cos_block:
+                lines.append(cos_block)
+                lines.append("")
+        except RuntimeError as exc:
+            lines.append(f"(cosponsors unavailable: {exc})")
+            lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def main() -> int:
+    args = parse_args()
+    sections = {s.strip().lower() for s in args.sections.split(",") if s.strip()}
+    invalid = sections - {"summaries", "actions", "cosponsors", "text"}
+    if invalid:
+        print(f"Error: unknown sections: {', '.join(sorted(invalid))}", file=sys.stderr)
+        return 1
+
+    try:
+        if len(args.bill) == 1:
+            congress, bill_type, number = parse_bill_ref(args.bill[0])
+        elif len(args.bill) == 3:
+            congress, bill_type, number = parse_bill_ref(*args.bill)
+        else:
+            raise ValueError("expected bill as: CONGRESS TYPE NUMBER or 118-HR-3076")
+
+        report = build_report(congress, bill_type, number, sections)
+
+        if args.output:
+            out = Path(args.output)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(report, encoding="utf-8")
+            print(f"Wrote bill report to {out}")
+        elif args.max_chars is not None and len(report) > args.max_chars:
+            print(report[: args.max_chars], end="")
+            print("\n...[truncated]")
+        else:
+            print(report, end="")
+        return 0
+    except (RuntimeError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

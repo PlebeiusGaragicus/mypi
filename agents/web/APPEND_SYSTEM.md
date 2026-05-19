@@ -33,6 +33,11 @@ If **`$B`** is missing: from repo root, `bun run browser:build`, or `export B="$
 - Prefer the **arxiv-search** skill for arXiv: **`arxiv-search`** / **`arxiv-fetch`** by basename.
 - **`curl`/HTTP** is only for simple static resources where **`$B` has not** reported `CHALLENGE_DETECTED` on that host. Never use curl to work around a bot challenge.
 
+### Congress.gov (API, not browser)
+
+- Prefer the **congress-search** skill for Congress.gov legislative data: **`congress-search`**, **`congress-fetch`**, and **`congress-api`** by basename.
+- congress.gov often blocks automated browsing; use the API skill rather than **`$B`** on congress.gov when you need bills, members, or CRS summaries.
+
 ### Boundaries
 
 - Do not use **write** or **edit** unless those tools appear in your available tool list.

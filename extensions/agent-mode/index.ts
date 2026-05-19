@@ -1,7 +1,9 @@
+import "./bootstrap-mypi-config";
 import "./bootstrap-path";
 import "./bootstrap-browser";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import registerAgentMode from "./agent-mode";
+import { registerMypiConfig } from "./mypi-config-command";
 
 /**
  * PATH bootstrap (skill scripts) then `/agent-mode` and related hooks.
@@ -9,4 +11,5 @@ import registerAgentMode from "./agent-mode";
  */
 export default function agentModeBundle(pi: ExtensionAPI): void {
 	registerAgentMode(pi);
+	registerMypiConfig(pi);
 }

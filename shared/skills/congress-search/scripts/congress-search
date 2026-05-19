@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import sys
+import textwrap
+from typing import Any
+
+from _congress_client import (
+    congress_gov_bill_url,
+    fetch_pages,
+    format_bill_citation,
+    format_datetime_param,
+    latest_action_date,
+    latest_action_text,
+    matches_keyword,
+    resolve_congress,
+    strip_html,
+)
+
+
+def parse_limit(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("--limit must be at least 1")
+    return min(parsed, 250)
+
+
+def parse_max_pages(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("--max-pages must be at least 1")
+    return min(parsed, 20)
+
+
+def add_common_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--congress", type=int, help="congress number (default: current)")
+    parser.add_argument("--limit", type=parse_limit, default=20, help="per-page limit (default: 20, max: 250)")
+    parser.add_argument("--max-pages", type=parse_max_pages, default=3, help="max pages to fetch (default: 3)")
+    parser.add_argument("--from", dest="from_date", metavar="DATE", help="fromDateTime filter (YYYY-MM-DD)")
+    parser.add_argument("--to", dest="to_date", metavar="DATE", help="toDateTime filter (YYYY-MM-DD)")
+    parser.add_argument("--keyword", help="client-side filter on title/summary text")
+    parser.add_argument("--json", action="store_true", help="print JSON results")
+
+
+def build_date_query(args: argparse.Namespace) -> dict[str, str]:
+    query: dict[str, str] = {}
+    if args.from_date:
+        query["fromDateTime"] = format_datetime_param(args.from_date)
+    if args.to_date:
+        query["toDateTime"] = format_datetime_param(args.to_date)
+    return query
+
+
+def cmd_bills(args: argparse.Namespace) -> list[dict[str, Any]]:
+    congress = resolve_congress(args.congress)
+    path = f"bill/{congress}"
+    if args.type:
+        path = f"{path}/{args.type.lower()}"
+    query = build_date_query(args)
+    query["limit"] = args.limit
+    items = fetch_pages(path, query=query, max_pages=args.max_pages, list_key="bills")
+    if args.keyword:
+        filtered = []
+        for b in items:
+            if matches_keyword(b, args.keyword, "title"):
+                filtered.append(b)
+                continue
+            policy = b.get("policyArea")
+            if isinstance(policy, dict) and matches_keyword(policy, args.keyword, "name"):
+                filtered.append(b)
+        items = filtered
+    return items
+
+
+def cmd_summaries(args: argparse.Namespace) -> list[dict[str, Any]]:
+    congress = resolve_congress(args.congress)
+    path = f"summaries/{congress}"
+    if args.type:
+        path = f"{path}/{args.type.lower()}"
+    query = build_date_query(args)
+    query["limit"] = args.limit
+    query["sort"] = "updateDate+desc"
+    items = fetch_pages(path, query=query, max_pages=args.max_pages, list_key="summaries")
+    if args.keyword:
+        filtered = []
+        for item in items:
+            text = strip_html(str(item.get("text") or ""))
+            title = str(item.get("title") or "")
+            if args.keyword.lower() in text.lower() or args.keyword.lower() in title.lower():
+                filtered.append(item)
+        items = filtered
+    return items
+
+
+def cmd_members(args: argparse.Namespace) -> list[dict[str, Any]]:
+    if args.state:
+        state = args.state.upper()
+        path = f"member/{state}"
+        if args.district is not None:
+            path = f"{path}/{args.district}"
+        query: dict[str, str | int] = {"limit": args.limit}
+        items = fetch_pages(path, query=query, max_pages=args.max_pages, list_key="members")
+    else:
+        congress = resolve_congress(args.congress)
+        path = f"member/congress/{congress}"
+        query = {"limit": args.limit}
+        items = fetch_pages(path, query=query, max_pages=args.max_pages, list_key="members")
+
+    if args.keyword:
+        items = [
+            m
+            for m in items
+            if matches_keyword(m, args.keyword, "name")
+            or matches_keyword(m, args.keyword, "partyName")
+            or matches_keyword(m, args.keyword, "state")
+        ]
+    if args.district is not None and args.state:
+        items = [m for m in items if str(m.get("district")) == str(args.district)]
+    return items
+
+
+def print_bills(items: list[dict[str, Any]], label: str) -> None:
+    if not items:
+        print("No results found")
+        return
+    print(f"Found {len(items)} bill(s) ({label})")
+    print("")
+    for index, bill in enumerate(items, start=1):
+        congress = bill.get("congress")
+        bill_type = str(bill.get("type") or "").lower()
+        number = bill.get("number")
+        title = str(bill.get("title") or "(untitled)")
+        citation = format_bill_citation(congress, bill_type, number) if congress and number else ""
+        print(f"{index}. {title}")
+        if citation:
+            print(f"   {citation}")
+        action = latest_action_text(bill)
+        if action:
+            print(f"   Latest: {action}")
+        adate = latest_action_date(bill)
+        if adate:
+            print(f"   Date: {adate}")
+        if congress and bill_type and number:
+            print(f"   URL: {congress_gov_bill_url(congress, bill_type, number)}")
+        print("")
+    print("Tip: Use congress-fetch CONGRESS TYPE NUMBER for full bill detail.")
+
+
+def print_summaries(items: list[dict[str, Any]], label: str) -> None:
+    if not items:
+        print("No results found")
+        return
+    print(f"Found {len(items)} summar(ies) ({label})")
+    print("")
+    for index, item in enumerate(items, start=1):
+        title = str(item.get("title") or "(untitled)")
+        congress = item.get("congress")
+        bill_type = str(item.get("type") or "").lower()
+        number = item.get("number")
+        print(f"{index}. {title}")
+        if congress and bill_type and number:
+            print(f"   {format_bill_citation(congress, bill_type, number)}")
+            print(f"   URL: {congress_gov_bill_url(congress, bill_type, number)}")
+        text = strip_html(str(item.get("text") or ""))
+        if text:
+            wrapped = textwrap.wrap(text, width=92)
+            print("   Summary:")
+            for line in wrapped[:6]:
+                print(f"   {line}")
+            if len(wrapped) > 6:
+                print("   ...")
+        print("")
+
+
+def print_members(items: list[dict[str, Any]], label: str) -> None:
+    if not items:
+        print("No results found")
+        return
+    print(f"Found {len(items)} member(s) ({label})")
+    print("")
+    for index, member in enumerate(items, start=1):
+        name = str(member.get("name") or member.get("fullName") or "(unknown)")
+        state = member.get("state") or ""
+        district = member.get("district")
+        party = member.get("partyName") or member.get("party") or ""
+        bioguide = member.get("bioguideId") or ""
+        line = f"{index}. {name}"
+        if party:
+            line += f" ({party})"
+        print(line)
+        loc = state
+        if district is not None and str(district) != "":
+            loc = f"{state}-{district}"
+        if loc:
+            print(f"   {loc}")
+        if bioguide:
+            print(f"   Bioguide: {bioguide}")
+        print("")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Search Congress.gov legislative data via API v3.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  congress-search bills --congress 118 --keyword postal --limit 10\n"
+            "  congress-search summaries --congress 118 --type hr --keyword climate\n"
+            "  congress-search members --state CA --congress 118"
+        ),
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    bills = sub.add_parser("bills", help="list/search bills")
+    add_common_flags(bills)
+    bills.add_argument("--type", help="bill type: hr, s, hjres, sjres, hconres, sconres, hres, sres")
+
+    summaries = sub.add_parser("summaries", help="list CRS bill summaries")
+    add_common_flags(summaries)
+    summaries.add_argument("--type", help="filter by bill type")
+
+    members = sub.add_parser("members", help="list members")
+    add_common_flags(members)
+    members.add_argument("--state", help="two-letter state code")
+    members.add_argument("--district", type=int, help="district number (with --state)")
+
+    args = parser.parse_args()
+
+    try:
+        if args.command == "bills":
+            items = cmd_bills(args)
+            label = f"congress {resolve_congress(args.congress)}"
+            if args.json:
+                print(json.dumps({"command": "bills", "results": items}, indent=2))
+            else:
+                print_bills(items, label)
+        elif args.command == "summaries":
+            items = cmd_summaries(args)
+            label = f"congress {resolve_congress(args.congress)}"
+            if args.json:
+                print(json.dumps({"command": "summaries", "results": items}, indent=2))
+            else:
+                print_summaries(items, label)
+        elif args.command == "members":
+            items = cmd_members(args)
+            if args.json:
+                print(json.dumps({"command": "members", "results": items}, indent=2))
+            else:
+                label = args.state or f"congress {resolve_congress(args.congress)}"
+                print_members(items, label)
+        return 0
+    except (RuntimeError, ValueError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
