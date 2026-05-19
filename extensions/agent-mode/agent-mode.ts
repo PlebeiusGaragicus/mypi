@@ -58,7 +58,7 @@ const MODE_MENU_DESCRIPTIONS: Record<AgentModeSelector, string> = {
 	chat: "no tools — conversation only",
 	scout: "read files only",
 	write: "read and edit files",
-	web: "read files and run shell commands",
+	web: "bash + browser-control ($B), read files",
 	code: "all tools available",
 	workflow: "multi-agent workflow orchestrator",
 	pi: "agent mode off - vanilla Pi",
