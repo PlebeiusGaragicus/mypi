@@ -9,3 +9,4 @@ arxiv-search
 congress-search
 tavily-search
 exa-search
+btc-price

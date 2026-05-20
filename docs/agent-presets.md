@@ -33,9 +33,9 @@ includeContextFiles: true
 theme: github-dark-default
 
 prompt:
-  base: pi
+  base: templated
   system: |
-    Optional full system prompt for raw or templated presets.
+    Optional preset-owned system prompt.
   append: |
     Optional text appended to the effective base prompt.
 
@@ -93,10 +93,11 @@ Capability lists accumulate:
 `prompt.base` controls composition:
 
 - `pi`: start from Pi's generated system prompt and append preset text.
-- `templated`: use preset `system`, then Pi's generated prompt, then preset `append`.
-- `raw`: use only preset `system` plus `append`.
+- `templated`: use preset `system`, then preserve Pi-generated tools, project context, available skills, date, and cwd without Pi's default prose.
+- `raw`: use only preset `system`.
 
 `prompt.base: raw` is useful for strict classifiers, judges, or deterministic workers that should not inherit ambient Pi instructions.
+`prompt.base: templated` is the default choice for mypi tool-using presets that need their own concise operating rules while still showing model-visible tools and skills. `prompt.base: pi` should be reserved for presets that intentionally inherit Pi's full coding-agent prompt, such as `code`.
 
 ## Tools And Extensions
 

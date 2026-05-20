@@ -1,10 +1,14 @@
 ---
 name: browser-control
-description: Use for web browsing, UI interaction, screenshots, scraping, and repeatable browser skills. Read skill before using browser.
+description: Use for live pages, browser automation, UI interaction, screenshots, scraping, SPAs, logins, and bot-challenge handoff. Read this skill before browser or browser-like HTTP access.
 disable-model-invocation: false
 ---
 
 # Browser Control
+
+Read this skill before running **`$B`**, browser automation, screenshot commands, or HTTP fallback commands for a page that may require browser access.
+
+Do not try **`curl`**, **`wget`**, or **`fetch`** first when the task involves a live page, login, SPA, bot protection, visual inspection, or user interaction.
 
 **`browser-control` is the product name for this CLI, not a command on `PATH`.** Invoke it only as **`$B <subcommand> …`**.
 

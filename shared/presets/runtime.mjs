@@ -291,14 +291,46 @@ export function effectivePromptBase(preset) {
 	return prompt.base ?? (prompt.system ? "templated" : "pi");
 }
 
+function sliceSection(text, startMarker, endMarkers) {
+	const start = text.indexOf(startMarker);
+	if (start < 0) return "";
+	const searchStart = start + startMarker.length;
+	const end = endMarkers
+		.map((marker) => text.indexOf(marker, searchStart))
+		.filter((index) => index >= 0)
+		.sort((a, b) => a - b)[0];
+	return text.slice(start, end ?? text.length).trim();
+}
+
+function extractGeneratedPromptSections(eventSystemPrompt) {
+	const sections = [];
+
+	// Keep this in sync with Pi's generated sections in
+	// pi/packages/coding-agent/src/core/system-prompt.ts buildSystemPrompt().
+	for (const section of [
+		sliceSection(eventSystemPrompt, "Available tools:", ["\n\nIn addition to the tools above", "\n\nGuidelines:"]),
+		sliceSection(eventSystemPrompt, "# Project Context", [
+			"\n\nThe following skills provide specialized instructions",
+			"\nCurrent date:",
+		]),
+		sliceSection(eventSystemPrompt, "The following skills provide specialized instructions", ["\nCurrent date:"]),
+		sliceSection(eventSystemPrompt, "Current date:", []),
+	]) {
+		if (section) sections.push(section);
+	}
+
+	return sections;
+}
+
 export function composePrompt(eventSystemPrompt, preset) {
 	const prompt = preset.prompt ?? {};
 	const base = effectivePromptBase(preset);
 	if (base === "raw") return prompt.system ?? "";
 	if (base === "templated") {
-		const system = prompt.system ?? "";
-		const withGenerated = system ? `${system}\n\n${eventSystemPrompt}` : eventSystemPrompt;
-		return prompt.append ? `${withGenerated}\n\n${prompt.append}` : withGenerated;
+		const sections = [prompt.system?.trim(), ...extractGeneratedPromptSections(eventSystemPrompt), prompt.append?.trim()].filter(
+			Boolean,
+		);
+		return sections.join("\n\n");
 	}
 	return prompt.append ? `${eventSystemPrompt}\n\n${prompt.append}` : eventSystemPrompt;
 }

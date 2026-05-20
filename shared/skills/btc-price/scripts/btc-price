@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+API_URL = "https://api.coingecko.com/api/v3/simple/price"
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+def parse_vs(value: str) -> list[str]:
+    currencies = [part.strip().lower() for part in value.split(",") if part.strip()]
+    if not currencies:
+        raise argparse.ArgumentTypeError("at least one currency is required")
+    return currencies
+
+
+def fetch_prices(vs_currencies: list[str]) -> dict[str, float]:
+    query = urllib.parse.urlencode(
+        {
+            "ids": "bitcoin",
+            "vs_currencies": ",".join(vs_currencies),
+        }
+    )
+    request = urllib.request.Request(
+        f"{API_URL}?{query}",
+        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace").strip()
+        detail = f" ({body})" if body else ""
+        raise RuntimeError(f"CoinGecko request failed: HTTP {exc.code}{detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"CoinGecko request failed: {exc.reason}") from exc
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("CoinGecko returned invalid JSON") from exc
+
+    bitcoin = payload.get("bitcoin")
+    if not isinstance(bitcoin, dict):
+        raise RuntimeError("CoinGecko response missing bitcoin prices")
+
+    prices: dict[str, float] = {}
+    for currency in vs_currencies:
+        value = bitcoin.get(currency)
+        if not isinstance(value, (int, float)):
+            raise RuntimeError(f"CoinGecko response missing bitcoin.{currency}")
+        prices[currency] = float(value)
+    return prices
+
+
+def format_default(prices: dict[str, float]) -> str:
+    if len(prices) == 1 and "usd" in prices:
+        return f"BTC: ${prices['usd']:,.2f} USD"
+    parts = [f"{currency.upper()}: {value:,.2f}" for currency, value in prices.items()]
+    return "BTC: " + ", ".join(parts)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Fetch the current Bitcoin price from CoinGecko.",
+        epilog=(
+            "Examples:\n"
+            "  btc-price\n"
+            '  btc-price --vs usd,eur,gbp\n'
+            "  btc-price --json"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--vs",
+        type=parse_vs,
+        default=["usd"],
+        metavar="CUR",
+        help="comma-separated quote currencies (default: usd)",
+    )
+    parser.add_argument("--json", action="store_true", help="print prices as JSON")
+    args = parser.parse_args()
+
+    try:
+        prices = fetch_prices(args.vs)
+    except RuntimeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps({"bitcoin": prices}, indent=2))
+    else:
+        print(format_default(prices))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

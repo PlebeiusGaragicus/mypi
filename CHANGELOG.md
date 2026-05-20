@@ -16,6 +16,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Added
 
+- Added path-promoted `btc-price` CLI for the btc-price skill (CoinGecko spot quotes).
 - Started tracking notable project changes in a root changelog.
 - Added a documented development workflow and lifecycle prompt set for issue/spec, planning, implementation, wrapping, PR review, changelog audit, and release preparation.
 - Added `/preset` activation, flat package presets, shared workflow prompts, a shared workflow-builder skill, and preset-gated `subagent` / `questionnaire` tools.
@@ -29,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 - Consolidated PR review prompts into one merge-readiness prompt and updated the pull request template to match the workflow.
 - Moved agent prompt resources into `shared/prompts/`, tool extensions into `extensions/tools/`, and package bootstrap code into `extensions/preset/bootstrap.ts`.
 - Preset activation now applies configured model, thinking level, scoped environment overrides, and best-effort context-file exclusion.
+- The templated prompt base now keeps generated tools, context, and skills without inheriting Pi's default prose; web, write, and scout use it.
 - Rewrote docs as current-state package specs instead of refactor notes.
 
 ### Fixed
