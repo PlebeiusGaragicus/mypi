@@ -65,6 +65,7 @@ If cwd is `~/Documents/project-abcd/subject/paper`, both overlays are loaded and
 Scalars replace:
 
 - `description`
+- `userSelectable`
 - `provider`
 - `model`
 - `thinkingLevel`
@@ -91,6 +92,7 @@ Canonical shape:
 
 ```yaml
 description: Human-readable summary
+userSelectable: true
 
 thinkingLevel: high
 includeContextFiles: true
@@ -136,6 +138,17 @@ Model fields are optional and intentionally omitted from the canonical example. 
 `thinkingLevel` is also optional. When present, activating the preset should set the current thinking level in an interactive Pi session. For worker/subagent launches, it should act as the default thinking level for that preset invocation.
 
 `environment` is optional. When present, it overrides same-name environment variables for this preset invocation. It does not wipe the whole process environment.
+
+`userSelectable` defaults to `true`. Set `userSelectable: false` for internal worker presets such as classifiers or judges that should not appear in the interactive `/preset` menu or keyboard cycling.
+
+Internal presets remain usable by exact name:
+
+```text
+/preset classifier
+pi --preset classifier
+```
+
+They also remain visible to workflow orchestrators through `workers:` lists.
 
 ## Prompt Modes
 
@@ -286,6 +299,10 @@ pi --preset <worker>
 ```
 
 from the same cwd so user and project overlays apply to workers as well as the parent orchestrator.
+
+Any preset that can call subagents is a workflow preset and requires a clean session. This is implied by `extensions: [workflow-orchestrator]` and a non-empty `workers:` list.
+
+Selecting a workflow preset through `/preset <name>` or the `/preset` menu should warn that the preset will start from a fresh context, ask for confirmation, switch to the selected preset, reload, clear conversation history by starting a new session, and notify the user to run the appropriate workflow prompt template, for example `/deepresearch ...`.
 
 ## Migration Decisions
 

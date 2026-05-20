@@ -23,6 +23,32 @@ workers:
 
 The `workflow-orchestrator` extension is loaded by the package but inactive unless the active preset opts into it.
 
+Every preset that can call subagents is a workflow preset and requires a clean session. This is implied by:
+
+```yaml
+extensions:
+  - workflow-orchestrator
+workers:
+  - scout
+```
+
+## Workflow Preset Activation
+
+Workflow presets are activated through normal preset mechanisms:
+
+```text
+/preset <workflow-preset>
+/preset
+pi --preset <workflow-preset>
+```
+
+Behavior:
+
+1. Warn that multi-agent workflows are designed to start from a fresh context, strictly follow a workflow prompt, and call subagents to keep the orchestrator context clean.
+2. Ask for confirmation before clearing the active conversation.
+3. On confirm, start a new session, switch to the selected workflow preset, reload resources/extensions, and show workflow branding.
+4. Notify the user to run the proper workflow prompt template, for example `/deepresearch ...`.
+
 ## Worker Launching
 
 Workers should launch by preset name:
@@ -46,6 +72,14 @@ The worker prompt should still include operational instructions:
 Decision: worker catalog is explicit in the orchestrator preset's `workers:` list.
 
 Do not infer worker presets from all installed presets, tags, or directories in v1.
+
+Worker presets may set:
+
+```yaml
+userSelectable: false
+```
+
+This hides them from the interactive `/preset` menu and preset cycling while still allowing the orchestrator to launch them by name. Users may also explicitly activate them with `/preset <name>` or `pi --preset <name>` when debugging.
 
 ## Trace Behavior
 
@@ -73,6 +107,7 @@ Desired trace properties:
 - Use `workers:` from the active preset.
 - Spawn workers with `pi --preset <worker>`.
 - Keep `subagent` as an extension-provided tool implied by `workflow-orchestrator`.
+- Use normal preset activation for workflow presets.
 
 ## Open Implementation Feedback
 

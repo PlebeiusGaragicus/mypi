@@ -30,6 +30,7 @@ Default behavior:
 Examples:
 
 - A status line can show the active preset.
+- Workflow presets can show a simple header/title reading `MULTI-AGENT SYSTEM`.
 - Theme cycling can include package/global/project themes.
 - System prompt debug can display the effective preset-composed prompt.
 
@@ -49,19 +50,20 @@ It currently composes the branding modules directly and is listed in `package.js
 - Theme behavior may need to coordinate with preset-selected `theme`.
 - System prompt debug should understand preset-composed prompts after the refactor.
 - Existing per-feature config files such as a TTS WPM file should migrate to `~/.pi/mypi/env.yml` when they are simple user configuration values.
+- Workflow branding should be limited to a simple `MULTI-AGENT SYSTEM` header/title.
 
 ## Decisions
 
 - Keep branding package-global.
 - Do not require preset `extensions:` opt-in for branding.
 - Allow branding to consume active preset state when useful for UI.
+- When the active preset is a workflow preset, show `MULTI-AGENT SYSTEM` in the header/title.
 - Install shared themes at package level; presets select `theme` by name rather than exposing theme directories.
 - Use mypi environment config for simple user-tunable values consumed by branding extensions, such as TTS settings.
 
 ## Open Implementation Feedback
 
 - Decide whether theme cycling should cycle all loaded themes or prioritize package shared themes.
-- Decide whether flow title/status should display active preset name.
 - Verify `/save` and `/say` remain appropriate as global commands.
 - Define the env keys used by branding in `env.yml.example`.
 
