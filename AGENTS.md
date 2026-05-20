@@ -1,5 +1,26 @@
 Several reference repos are cloned locally and .gitignore'd - they are for reference only.  Review .gitignore for the definitive list.  NEVER modify them.
 
+## Development process
+
+Use issues, pull requests, changelog entries, and review notes as the durable record of why the repository changed.
+
+- Prefer opening or linking a GitHub issue before non-trivial work. Small typo fixes, mechanical maintenance, and emergency follow-ups may skip an issue, but the PR should say why.
+- Every pull request should include a summary, linked issue or rationale, test plan, and changelog note.
+- Treat AI review as advisory: it can find risks and process gaps, but humans decide whether to merge.
+- Do not use AI review as the only quality gate. Prefer automated checks for deterministic concerns such as tests, builds, formatting, generated files, and policy checks.
+- Keep commits and PRs reviewable. Split unrelated changes instead of bundling process, refactor, and product behavior into one large change.
+
+## Changelog and versioning
+
+The root `CHANGELOG.md` is the source of truth for user-visible and operator-visible changes.
+
+- Maintain an `## [Unreleased]` section with these subsections, in order: `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, `### Removed`, `### Security`.
+- Add a changelog entry for changes that affect behavior, commands, configuration, workflows, docs users rely on, prompts, skills, extensions, packaging, or release process.
+- Skip changelog entries for purely internal refactors, typo-only edits, test-only changes, generated output, and release housekeeping unless they affect users or operators.
+- Write entries in plain language from the user's point of view. Mention the issue or PR when available, for example: `Added browser runtime smoke checks ([#12](https://github.com/owner/repo/pull/12)).`
+- Put incompatible behavior, migration requirements, removed commands, renamed config keys, and changed public interfaces under `### Breaking Changes`, even if they also fix a bug.
+- Version bumps happen during release preparation. Move completed `Unreleased` entries into a dated version section and update `VERSION` and package manifests together when applicable.
+
 ## Session PATH bootstrap (skill scripts)
 
 Pi does not run an interactive shell for the agent **bash** tool; each command is a new process. To expose pick-and-choose skill utilities (e.g. bare `todo`) without full paths or `source` on every command:

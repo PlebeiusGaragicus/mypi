@@ -1,54 +1,53 @@
 ---
-description: Audit changelog entries before release
+description: Audit changelog coverage before a large PR or release
 ---
-Audit changelog entries for all commits since the last release.
+
+Audit changelog coverage for the current branch, a PR, or all commits since the last release. Use this for focused changelog confidence; use `re.md` when it is time to actually prepare a versioned release.
 
 ## Process
 
-1. **Find the last release tag:**
-   ```bash
-   git tag --sort=-version:refname | head -1
-   ```
+1. Discover the repository's changelog policy:
+   - Read `AGENTS.md`, `CONTRIBUTING`, `README.md`, `.github/`, and existing changelog files.
+   - Prefer the documented changelog location. If none is documented, look for root `CHANGELOG.md`, then package-level changelogs.
 
-2. **List all commits since that tag:**
-   ```bash
-   git log <tag>..HEAD --oneline
-   ```
+2. Find the comparison range:
+   - If a PR URL or PR number is provided, compare the PR branch to its base branch.
+   - Otherwise find the latest version tag with `git tag --sort=-version:refname` and compare that tag to `HEAD`.
+   - If there are no tags, compare against the repository's main branch when available.
 
-3. **Read each package's [Unreleased] section:**
-   - packages/ai/CHANGELOG.md
-   - packages/tui/CHANGELOG.md
-   - packages/coding-agent/CHANGELOG.md
+3. Review every commit and changed file in the range:
+   - Determine whether each change is user-facing, operator-facing, developer-workflow-facing, internal-only, generated, test-only, docs-only, or release housekeeping.
+   - Changes to prompts, skills, extensions, config files, command behavior, install behavior, packaging, CI, or documented workflow usually need changelog coverage.
+   - Pure refactors, typo-only edits, generated output, and test-only changes can usually be skipped unless they affect behavior.
 
-4. **For each commit, check:**
-   - Skip: changelog updates, doc-only changes, release housekeeping
-   - Skip: changes to generated model catalogs (for example `packages/ai/src/models.generated.ts`) unless accompanied by an intentional product-facing change in non-generated source/docs.
-   - Determine which package(s) the commit affects (use `git show <hash> --stat`)
-   - Verify a changelog entry exists in the affected package(s)
-   - For external contributions (PRs), verify format: `Description ([#N](url) by [@user](url))`
+4. Validate changelog quality:
+   - Entries should live under `## [Unreleased]` before release.
+   - Sections should match the repo policy. A good default order is `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, `### Removed`, `### Security`.
+   - Breaking changes must be called out as breaking, including migration notes when useful.
+   - Entries should be written from the user's point of view and include issue or PR links when available.
 
-5. **Cross-package duplication rule:**
-   Changes in `ai`, `agent` or `tui` that affect end users should be duplicated to `coding-agent` changelog, since coding-agent is the user-facing package that depends on them.
+5. Report before editing:
+   - Missing entries.
+   - Misclassified entries.
+   - Entries that are too vague, too internal, or missing migration/release context.
+   - Commits that do not need changelog entries and why.
 
-6. **Add New Features section after changelog fixes:**
-   - Insert a `### New Features` section at the start of `## [Unreleased]` in `packages/coding-agent/CHANGELOG.md`.
-   - Propose the top new features to the user for confirmation before writing them.
-   - Link to relevant docs and sections whenever possible.
+## Output Format
 
-7. **Report:**
-   - List commits with missing entries
-   - List entries that need cross-package duplication
-   - Add any missing entries directly
+Changelog Audit:
+- Range reviewed: `<base>...<head>`
+- Changelog files reviewed: `<paths>`
 
-## Changelog Format Reference
+Required Changes:
+- ...
 
-Sections (in order):
-- `### Breaking Changes` - API changes requiring migration
-- `### Added` - New features
-- `### Changed` - Changes to existing functionality
-- `### Fixed` - Bug fixes
-- `### Removed` - Removed features
+Optional Improvements:
+- ...
 
-Attribution:
-- Internal: `Fixed foo ([#123](https://github.com/earendil-works/pi-mono/issues/123))`
-- External: `Added bar ([#456](https://github.com/earendil-works/pi-mono/pull/456) by [@user](https://github.com/user))`
+No Changelog Needed:
+- ...
+
+Proposed Entries:
+- Provide exact entry text and target section.
+
+If no changelog work is needed, say so clearly and explain the remaining release risk, if any.

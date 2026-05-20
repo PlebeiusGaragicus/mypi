@@ -1,6 +1,6 @@
 {
   "name": "mypi",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "PlebbyG's personal Pi agent configurations managed as a Pi git package.",
   "keywords": [
     "pi-package"
