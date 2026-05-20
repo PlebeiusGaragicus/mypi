@@ -96,7 +96,7 @@ export function registerMypiEnvConfig(pi: ExtensionAPI): void {
 		getArgumentCompletions: (prefix) => {
 			const base = ["path", "list", "init", "get", "set", "unset"];
 			const completions = base.filter((item) => item.startsWith(prefix));
-			return completions.length ? completions.map((value) => ({ value })) : null;
+			return completions.length ? completions.map((value) => ({ value, label: value })) : null;
 		},
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			if (!ctx.hasUI) return;

@@ -33,6 +33,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Fixed
 
+- Fixed command argument completions for `/preset` and `/mypi-env-config` so accepting an inline completion does not crash the interactive editor.
+
 ### Removed
 
 ### Security

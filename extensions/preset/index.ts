@@ -344,7 +344,7 @@ export default function presetExtension(pi: ExtensionAPI): void {
 				.concat("pi")
 				.filter((name) => name.startsWith(prefix));
 			if (names.length === 0) return null;
-			return names.map((name) => ({ value: name }));
+			return names.map((name) => ({ value: name, label: name }));
 		},
 		handler: async (args, ctx: ExtensionCommandContext) => {
 			registry = loadPresets(PACKAGE_ROOT, getCwd(ctx)) as Map<string, PresetDefinition>;

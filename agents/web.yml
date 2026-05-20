@@ -57,3 +57,4 @@ skillDirs:
   - shared/skills/exa-search
   - shared/skills/arxiv-search
   - shared/skills/congress-search
+  - shared/skills/btc-price
