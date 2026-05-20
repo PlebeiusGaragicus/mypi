@@ -1,70 +1,104 @@
 # Workflow Builder
 
-## Purpose
+Workflow prompts are reusable natural-language programs for the `workflow` preset. They define an execution graph: phases, worker choices, artifact state, checkpoints, branches, validation gates, stop conditions, and final output.
 
-The workflow-builder feature helps users create or revise workflow prompt templates for a multi-agent orchestrator.
+## Location
 
-This feature is currently represented by the `workflow-builder` skill, but the preset refactor changes the storage and invocation model around it.
+Package workflow prompts live in:
 
-## Target Behavior
-
-Workflow building should produce durable workflow prompt files, not just chat advice.
-
-The workflow builder should:
-
-- Clarify whether the user is creating or modifying a workflow.
-- Clarify where the workflow should live.
-- Draft a review spec before writing.
-- Use a questionnaire-like interaction for important choices.
-- Write only the approved target file.
-- Validate the written workflow against the agreed structure.
-
-## Storage Model After Presets
-
-Legacy `mas` terminology should become preset-driven workflow terminology.
-
-Target locations:
-
-- Package-shipped workflow prompts: read-only package resources.
-- User-wide workflow prompts: a prompt directory referenced by the orchestrator preset, such as `~/.pi/mypi/prompts/`.
-- Project workflow prompts: Pi-native `.pi/prompts/`, referenced by the orchestrator preset through `promptDirs`.
-
-The workflow builder should not write into the installed package tree because those files can be reset by update.
-
-## Relationship To Agent Presets
-
-A workflow prompt is a prompt resource used by an orchestrator preset.
-
-The orchestrator preset declares:
-
-```yaml
-extensions:
-  - workflow-orchestrator
-workers:
-  - scout
-  - write
-  - code
+```text
+shared/prompts/workflow/
 ```
 
-The workflow prompt describes the step-by-step orchestration policy, artifact conventions, worker delegation contracts, validation passes, and final response behavior.
+User-authored workflow prompts should live outside preset directories and be exposed through `promptFiles` or `promptDirs` in a preset overlay.
 
-## Current Code/Spec Conflicts
+## Authoring Rules
 
-- `shared/skills/workflow-builder/SKILL.md` now describes preset-based workflow prompt locations and worker names.
-- The current workflow-builder skill uses `.pi/prompts/` as the project-local prompt target; this remains reasonable if the orchestrator preset references `.pi/prompts` in `promptDirs`.
-- The skill references docs paths such as `$DOT_PI_DIR/docs/workflow-writing-guide.md`; the new docs live under this repo's `docs/` directory and need updated references.
-- It references worker names `chat`, `scout`, `write`, `code`, and `web`, which remain valid as preset names but should be launched through `pi --preset <worker>`.
+- Name the workflow goal, expected artifacts, and stop conditions.
+- Use worker presets by capability: `scout`, `code`, `write`, `web`, `chat`, `classifier`, `judge`, or more specific custom presets.
+- Pass enough context to each worker. Do not ask workers without filesystem or web tools to inspect paths, URLs, commands, or runtime state.
+- Prefer file artifacts for long outputs and concise worker replies for handoff.
+- Use `questionnaire` only for preflight clarification or explicit human checkpoints.
+- Treat the final response as program output: keep it short and point to artifacts on disk when artifacts are produced.
 
-## Decisions
+## Canonical Template
 
-- Keep workflow building as a skill/prompted workflow, not a hardcoded extension.
-- Treat workflow prompts as resources owned by an orchestrator preset.
-- Do not write into package-installed resources.
-- Keep explicit review checkpoints before writing workflow files.
+New workflow prompts should use this shape unless the workflow is intentionally tiny:
 
-## Open Implementation Feedback
+```markdown
+# Workflow Name
 
-- Choose the default durable user workflow location under `~/.pi/mypi`.
-- Decide the default user-wide prompt directory, likely `~/.pi/mypi/prompts/`.
-- Update the workflow-builder skill after the preset loader and final resource layout are implemented.
+## Program Contract
 
+- Goal:
+- Inputs:
+- Outputs:
+- Invariants:
+- Stop conditions:
+
+## State And Artifacts
+
+- Artifact root:
+- Manifests:
+- Trace expectations:
+- Durable outputs:
+
+## Execution Graph
+
+### 1. Node Name
+
+- Worker: `<preset name>`
+- Inputs:
+- Task payload:
+- Side effects:
+- Return value:
+- Success:
+- Errors/blockers:
+- Next transition:
+
+## Validation Gates
+
+- Gate:
+- Evidence required:
+- Repair path:
+
+## Final Output
+
+- Include:
+- Omit:
+
+## User Request
+
+`$@`
+```
+
+## Worker Boundaries
+
+The parent orchestrator owns the conversation. Workers are implementation units. A worker task should include:
+
+- exact objective
+- allowed inputs and paths
+- output artifact path when relevant
+- expected side effects
+- return value shape
+- success criteria
+- blocker criteria
+- next transition the return value will inform
+
+## Default User Prompt Location
+
+User prompt libraries may be stored under:
+
+```text
+~/.pi/mypi/prompts/
+```
+
+Expose them by adding the directory to a user preset overlay.
+
+## Review Checklist
+
+- The workflow can be resumed or inspected from its artifacts.
+- Each worker has the tools needed for the assigned task.
+- The prompt avoids hidden context assumptions.
+- The final output is grounded in produced artifacts or cited evidence.
+- The prompt uses presets, `subagent`, and current trace paths throughout.

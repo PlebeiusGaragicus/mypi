@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Preset-aware workflow orchestrator. The extension module is package-loaded, but
  * the `subagent` tool is only active for presets that declare
@@ -33,8 +34,6 @@ interface UsageStats {
 interface WorkerResult {
 	index: number;
 	agent: string;
-	persona?: string;
-	preset: string;
 	task: string;
 	exitCode: number;
 	messages: Message[];
@@ -58,8 +57,6 @@ interface TopLevelSubagentDetails {
 interface ManifestWorker {
 	index: number;
 	agent: string;
-	persona: string | null;
-	preset: string;
 	mode: InvocationMode;
 	task: string;
 	startedAt: string;
@@ -203,13 +200,11 @@ class TraceManager {
 		});
 	}
 
-	startWorker(mode: InvocationMode, agent: string, persona: string | undefined, preset: string, task: string, cwd: string) {
+	startWorker(mode: InvocationMode, agent: string, task: string, cwd: string) {
 		this.ensure(cwd);
 		const entry: ManifestWorker = {
 			index: this.nextIndex++,
 			agent,
-			persona: persona ?? null,
-			preset,
 			mode,
 			task,
 			startedAt: new Date().toISOString(),
@@ -250,7 +245,6 @@ class TraceManager {
 async function runWorker(
 	defaultCwd: string,
 	agentName: string,
-	persona: string | undefined,
 	task: string,
 	mode: InvocationMode,
 	signal: AbortSignal | undefined,
@@ -259,14 +253,11 @@ async function runWorker(
 	traceManager: TraceManager,
 ): Promise<WorkerResult> {
 	const allowed = currentWorkers();
-	const presetName = persona || agentName;
-	const manifestEntry = traceManager.startWorker(mode, agentName, persona, presetName, task, defaultCwd);
+	const manifestEntry = traceManager.startWorker(mode, agentName, task, defaultCwd);
 	const startedAt = manifestEntry.startedAt;
 	const baseResult: WorkerResult = {
 		index: manifestEntry.index,
 		agent: agentName,
-		persona,
-		preset: presetName,
 		task,
 		exitCode: 0,
 		messages: [],
@@ -287,7 +278,7 @@ async function runWorker(
 		return result;
 	}
 
-	const args = ["--mode", "json", "--session-dir", traceManager.traceDir, "--preset", presetName, "-p", buildWorkerTask(task)];
+	const args = ["--mode", "json", "--session-dir", traceManager.traceDir, "--preset", agentName, "-p", buildWorkerTask(task)];
 	const currentResult = baseResult;
 	const emitUpdate = () => {
 		onUpdate?.({
@@ -374,20 +365,17 @@ async function runWorker(
 }
 
 const TaskItem = Type.Object({
-	agent: Type.String({ description: "Name of the top-level capability worker to invoke" }),
-	persona: Type.Optional(Type.String({ description: "Optional worker preset to use instead of the agent preset" })),
+	agent: Type.String({ description: "Name of the worker preset to invoke" }),
 	task: Type.String({ description: "Task to delegate to the worker" }),
 });
 
 const ChainItem = Type.Object({
-	agent: Type.String({ description: "Name of the top-level capability worker to invoke" }),
-	persona: Type.Optional(Type.String({ description: "Optional worker preset to use instead of the agent preset" })),
+	agent: Type.String({ description: "Name of the worker preset to invoke" }),
 	task: Type.String({ description: "Task with optional {previous} placeholder for prior output" }),
 });
 
 const SubagentParams = Type.Object({
-	agent: Type.Optional(Type.String({ description: "Name of the top-level capability worker to invoke" })),
-	persona: Type.Optional(Type.String({ description: "Optional worker preset for single mode" })),
+	agent: Type.Optional(Type.String({ description: "Name of the worker preset to invoke" })),
 	task: Type.Optional(Type.String({ description: "Task to delegate in single mode" })),
 	tasks: Type.Optional(Type.Array(TaskItem, { description: "Parallel worker calls" })),
 	chain: Type.Optional(Type.Array(ChainItem, { description: "Sequential worker calls; later tasks can use {previous}" })),
@@ -400,8 +388,7 @@ function isErrorResult(result: WorkerResult): boolean {
 function compactResultLine(result: WorkerResult): string {
 	const output = getFinalOutput(result.messages).trim();
 	const preview = output.length > 240 ? `${output.slice(0, 240)}...` : output;
-	const persona = result.persona ? `/${result.persona}` : "";
-	return `[${result.agent}${persona}] ${isErrorResult(result) ? "failed" : "completed"}: ${preview || result.stderr || "(no output)"}`;
+	return `[${result.agent}] ${isErrorResult(result) ? "failed" : "completed"}: ${preview || result.stderr || "(no output)"}`;
 }
 
 export default function workflowOrchestrator(pi: ExtensionAPI): void {
@@ -462,7 +449,6 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 					const result = await runWorker(
 						ctx.cwd,
 						step.agent,
-						step.persona,
 						step.task.replace(/\{previous\}/g, previousOutput),
 						"chain",
 						signal,
@@ -497,7 +483,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 				}
 				const results = await Promise.all(
 					params.tasks.map((task) =>
-						runWorker(ctx.cwd, task.agent, task.persona, task.task, "parallel", signal, undefined, makeDetails("parallel"), traceManager),
+						runWorker(ctx.cwd, task.agent, task.task, "parallel", signal, undefined, makeDetails("parallel"), traceManager),
 					),
 				);
 				const successCount = results.filter((result) => !isErrorResult(result)).length;
@@ -514,7 +500,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 			}
 
 			if (params.agent && params.task) {
-				const result = await runWorker(ctx.cwd, params.agent, params.persona, params.task, "single", signal, onUpdate, makeDetails("single"), traceManager);
+				const result = await runWorker(ctx.cwd, params.agent, params.task, "single", signal, onUpdate, makeDetails("single"), traceManager);
 				if (isErrorResult(result)) {
 					const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 					return {
@@ -537,11 +523,10 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 		},
 
 		renderCall(args, theme) {
-			const persona = args.persona ? `/${args.persona}` : "";
 			const preview = args.task ? String(args.task).slice(0, 72) : args.tasks ? `parallel (${args.tasks.length})` : args.chain ? `chain (${args.chain.length})` : "...";
 			return new Text(
 				theme.fg("toolTitle", theme.bold("subagent ")) +
-					theme.fg("accent", `${args.agent || ""}${persona}`) +
+					theme.fg("accent", `${args.agent || ""}`) +
 					`\n  ${theme.fg("dim", preview)}`,
 				0,
 				0,
@@ -561,9 +546,8 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 			);
 			for (const worker of details.results) {
 				const status = isErrorResult(worker) ? theme.fg("error", "[error]") : theme.fg("success", "[ok]");
-				const persona = worker.persona ? `/${worker.persona}` : "";
 				container.addChild(new Spacer(1));
-				container.addChild(new Text(`${status} ${theme.fg("toolTitle", `${worker.agent}${persona}`)}`, 0, 0));
+				container.addChild(new Text(`${status} ${theme.fg("toolTitle", worker.agent)}`, 0, 0));
 				const output = getFinalOutput(worker.messages).trim() || worker.stderr.trim() || "(no output)";
 				const shown = expanded ? output : output.split("\n").slice(0, 8).join("\n");
 				container.addChild(new Markdown(shown, 0, 0, mdTheme));

@@ -22,22 +22,75 @@ Do not write or modify files under the installed package tree. Package-shipped w
 2. Clarify the storage tier: user-wide, project-local, or package maintenance.
 3. Derive a lowercase kebab-case `<slug>` from the workflow name.
 4. Inspect existing workflow prompts and nearby project context when relevant.
-5. Draft a concise review spec before writing. Include goal, expected user inputs, worker delegation plan, artifacts, validation, stop conditions, and final response shape.
+5. Draft a concise review spec before writing. Include program contract, expected user inputs, workflow state, execution graph, worker function calls, artifacts, validation gates, stop conditions, and final output shape.
 6. Use `questionnaire` for important approval or destination choices when the workflow preset provides it.
 7. Write only the approved target file.
-8. Read the written file and validate title, goal, phases, worker contracts, artifact conventions, stop conditions, final response guidance, and a final `## User Request` section.
+8. Read the written file and validate title, program contract, execution graph, worker contracts, artifact conventions, validation gates, stop conditions, final output guidance, and a final `## User Request` section.
+
+## Canonical Workflow Program Shape
+
+Use these sections for new workflow prompts unless the user asks for a smaller format:
+
+```markdown
+# Workflow Name
+
+## Program Contract
+
+- Goal:
+- Inputs:
+- Outputs:
+- Invariants:
+- Stop conditions:
+
+## State And Artifacts
+
+- Artifact root:
+- Manifests:
+- Trace expectations:
+- Durable outputs:
+
+## Execution Graph
+
+### 1. Node Name
+
+- Worker:
+- Inputs:
+- Task payload:
+- Side effects:
+- Return value:
+- Success:
+- Errors/blockers:
+- Next transition:
+
+## Validation Gates
+
+- Gate:
+- Evidence required:
+- Repair path:
+
+## Final Output
+
+- Include:
+- Omit:
+
+## User Request
+
+`$@`
+```
 
 ## Worker Names
 
 Use preset names for workers. The default workflow preset currently exposes:
 
 - `chat`
+- `classifier`
+- `judge`
 - `scout`
 - `write`
 - `code`
 - `web`
 
-Workers are launched by the orchestrator with `pi --preset <worker>`. Do not refer to `PI_CODING_AGENT_DIR`, `/agent-mode`, `/persona`, `mas`, `$DOT_PI_DIR`, or `$DOT_PI_OVERLAY` in new workflows unless the user is explicitly maintaining legacy content.
+Workers are launched by the orchestrator with `pi --preset <worker>`. Use preset names, `subagent`, and current trace paths under `.pi/subagent-traces/`.
 
 ## Inventory
 

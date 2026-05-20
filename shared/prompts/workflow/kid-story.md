@@ -1,6 +1,22 @@
 # Kid Story — toy parallel brainstorm → narrator
 
-Demonstration workflow: three **`write`** brainstorm passes run in parallel into **`ideas/`** markdown files, then one **`write`** narrator reads them and writes a single short children's story to **`story.md`**. Intended as a small MAS handoff demo, not a production editorial pipeline.
+Demonstration workflow: three **`write`** brainstorm passes run in parallel into **`ideas/`** markdown files, then one **`write`** narrator reads them and writes a single short children's story to **`story.md`**. Intended as a small workflow-orchestrator handoff demo, not a production editorial pipeline.
+
+## Program Contract
+
+- Inputs: idea seed, audience, tone, guardrails, optional title/output path, and word cap.
+- Outputs: three brainstorm files, one `story.md` artifact, and a concise final response pointing to them.
+- State: `ideas/brainstorm-*.md`, `story.md`, worker returns, word-count check.
+- Invariants: parallel brainstorm workers do not collide on paths; narrator writes the story; final story body stays within the word cap.
+- Stop conditions: missing seed, fewer than two brainstorm artifacts after repair, or failed story/trim pass.
+
+## Execution Graph
+
+1. Preflight parses the seed and settings.
+2. Parallel `write` calls produce three brainstorm files.
+3. A narrator `write` call synthesizes `story.md`.
+4. The orchestrator checks length and optionally calls one trim pass.
+5. Final output reports artifact paths and any partial lanes.
 
 ## Goal
 
@@ -69,7 +85,7 @@ Use your own **`read`** tool on **`story.md`**. Approximate a word count on the 
 - If the body is **≤ 520 words**, treat as acceptable (small counting slack).
 - If clearly **over 520 words**, call **`write`** once more with a tight trim task: read **`story.md`**, rewrite in place preserving plot and voice, **≤ 500 words**, same path.
 
-Do not ask **`chat`** to read **`story.md`** from a path alone. If you use **`chat`** (e.g. persona **`judge`**) for a child-appropriateness sniff test, paste an **inline excerpt** only (for example opening plus closing paragraphs), not path-only instructions.
+Do not ask **`judge`** to read **`story.md`** from a path alone. If you use the **`judge`** preset for a child-appropriateness sniff test, paste an **inline excerpt** only (for example opening plus closing paragraphs), not path-only instructions.
 
 ## Artifact Conventions
 
@@ -82,9 +98,9 @@ Do not ask **`chat`** to read **`story.md`** from a path alone. If you use **`ch
 - Fewer than two brainstorm files exist after the parallel phase and a single targeted **`write`** retry cannot restore coverage.
 - **`write`** cannot produce **`story.md`** or trim pass fails twice — stop with paths and blockers.
 
-## Final Response
+## Final Output
 
-Keep the final response short. Prefer:
+The final response is the program output. Keep it short and point to artifacts on disk. Prefer:
 
 `Kid story demo complete. Brainstorm: ./ideas/brainstorm-*.md — Final: ./story.md (≤1,000 words).`
 

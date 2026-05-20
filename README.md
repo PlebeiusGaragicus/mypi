@@ -12,6 +12,8 @@ It provides:
 
 Runtime settings (API keys, ntfy, TTS speed) are stored in **`~/.pi/mypi/mypi.env`**. The file is created from [`mypi.env.example`](mypi.env.example) on first runtime-env use and can be edited with `/mypi-env-config`. See [`shared/runtime-env/README.md`](shared/runtime-env/README.md).
 
+See [`docs/`](docs/) for the current package specs and operator guides.
+
 ## Install and Run
 
 Install as a Pi package:

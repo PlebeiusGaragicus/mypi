@@ -1,27 +1,29 @@
-# mypi Refactor Specs
+# mypi Documentation
 
-This directory tracks the specs for aligning `mypi` around preset-defined agents, shared skills, workflow orchestration, and bundled UI behavior.
+This directory is the living spec for the current mypi package. It describes how presets, tools, skills, prompts, runtime environment, workflows, and UI extensions work today.
+
+## User And Operator Guides
+
+- [Presets](presets.md): selecting presets with `/preset` and `pi --preset`, clean-session rules, and runtime behavior.
+- [Preset Catalog](preset-catalog.md): shipped presets and their intended use.
+- [Custom Presets](custom-presets.md): user/project overlays and merge rules.
+- [Runtime Env](runtime-env.md): `~/.pi/mypi/mypi.env`, `/mypi-env-config`, and shell bootstrap.
+- [Commands](commands.md): slash commands and package npm scripts.
+- [Workflow Library](workflow-library.md): workflow prompt catalog and invocation examples.
+- [Bootstrap](bootstrap.md): PATH promotion, `$B`, and dev-shell setup.
+- [Validation](validation.md): checks that keep presets and runtime env healthy.
 
 ## Feature Specs
 
-- [Agent Presets](agent-presets.md): YAML-only per-agent definitions, resource references, prompt modes, tool lists, extension activation, environment overlays, and migration from `/agent-mode` / personas.
-- [Skill Builder](skill-builder.md): conventions for creating and reviewing Pi skills, including prompt-visible vs command-only skills, path promotion, and environment-backed tools.
-- [Workflow Builder](workflow-builder.md): workflow prompt authoring flow and how it should move from legacy `mas` overlay assumptions to preset-driven workflows.
-- [Workflow Orchestrator](workflow-orchestrator.md): multi-agent system orchestration, `workers:` catalogs, `subagent` behavior, and migration of the current workflow extension.
-- [Browser Control](browser-control.md): large browser-control skill/runtime behavior and its bootstrap requirements.
-- [Branding](branding.md): global mypi UI/quality-of-life extensions and what remains intentionally preset-independent.
+- [Agent Presets](agent-presets.md): YAML schema, prompt composition, tool activation, resource discovery, and overlay semantics.
+- [Workflow Orchestrator](workflow-orchestrator.md): `subagent`, worker presets, trace behavior, and workflow preset rules.
+- [Workflow Builder](workflow-builder.md): conventions for authoring workflow prompts.
+- [Skill Builder](skill-builder.md): conventions for creating and reviewing Pi skills.
+- [Browser Control](browser-control.md): browser automation runtime, `$B`, and safety requirements.
+- [Branding](branding.md): global UI and quality-of-life extensions.
+- [Development Process](development-process.md): durable issue/PR/changelog/review process.
 
-## Current Architecture
+## Runtime State
 
-These docs describe the preset-based architecture and the remaining design decisions around package-level skills, runtime helpers, and workflow behavior.
-
-## Shared Configuration
-
-The target user-level configuration file is:
-
-```text
-~/.pi/mypi/mypi.env
-```
-
-The package ships `mypi.env.example` as the definitive list of runtime environment variables and simple user-tunable values used by mypi skills, scripts, and extensions.
+mypi-owned runtime values live in `~/.pi/mypi/mypi.env`. Pi model credentials remain in Pi's own auth store, not in mypi docs or config.
 

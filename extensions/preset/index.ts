@@ -26,12 +26,11 @@ import {
 
 const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PRESET_CUSTOM_TYPE = "mypi-preset-state";
-const LEGACY_AGENT_MODE_CUSTOM_TYPE = "agent-mode-state";
 
 interface PresetStateEntry {
 	type?: string;
 	customType?: string;
-	data?: { preset?: unknown; mode?: unknown };
+	data?: { preset?: unknown };
 }
 
 interface SessionStartEvent {
@@ -70,18 +69,13 @@ function hasUserMessageOnBranch(ctx: ExtensionContext): boolean {
 function isPresetStateEntry(entry: unknown): entry is PresetStateEntry {
 	if (!entry || typeof entry !== "object") return false;
 	const maybe = entry as PresetStateEntry;
-	return (
-		maybe.type === "custom" &&
-		(maybe.customType === PRESET_CUSTOM_TYPE || maybe.customType === LEGACY_AGENT_MODE_CUSTOM_TYPE)
-	);
+	return maybe.type === "custom" && maybe.customType === PRESET_CUSTOM_TYPE;
 }
 
 function normalizePresetName(raw: unknown): string | null {
 	if (typeof raw !== "string") return null;
 	const value = raw.trim();
 	if (!value || value === "pi") return null;
-	if (value === "editor") return "write";
-	if (value === "chat-only") return "chat";
 	return value;
 }
 
@@ -89,7 +83,7 @@ function findLastSavedPreset(entries: Iterable<unknown>): string | null {
 	let last: string | null = null;
 	for (const entry of entries) {
 		if (!isPresetStateEntry(entry)) continue;
-		last = normalizePresetName(entry.data?.preset ?? entry.data?.mode);
+		last = normalizePresetName(entry.data?.preset);
 	}
 	return last;
 }
@@ -107,7 +101,7 @@ function readLastPresetFromSessionFile(sessionFilePath: string): string | null {
 		if (!line.trim()) continue;
 		try {
 			const parsed = JSON.parse(line) as unknown;
-			if (isPresetStateEntry(parsed)) last = normalizePresetName(parsed.data?.preset ?? parsed.data?.mode);
+			if (isPresetStateEntry(parsed)) last = normalizePresetName(parsed.data?.preset);
 		} catch {
 			/* ignore malformed session lines */
 		}

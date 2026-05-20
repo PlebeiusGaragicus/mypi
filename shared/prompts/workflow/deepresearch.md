@@ -1,6 +1,24 @@
 # Deep Research Workflow
 
-Use top-level capability agents to produce a citation-backed research artifact. This workflow must match the quality bar of the legacy `deepresearch` MAS: source scouting, one-source-per-collector capture, draft synthesis, editorial review, and grounded final validation.
+Use top-level capability agents to produce a citation-backed research artifact: source scouting, one-source-per-collector capture, draft synthesis, editorial review, and grounded final validation.
+
+## Program Contract
+
+- Inputs: research topic, constraints, desired output path, source preferences, and scope limits from the user request.
+- Outputs: saved research report, collected source files, optional screenshots, and a concise final response that points to artifacts.
+- State: `sources/`, `screenshots/`, `reports/report.md`, worker returns, and validation notes.
+- Invariants: factual claims require citations; workers write artifacts only when structurally allowed; final chat output is not the primary report artifact.
+- Stop conditions: ambiguous topic, source/search blockers, insufficient collected sources, or report validation failure after one repair pass.
+
+## Execution Graph
+
+1. Preflight parses inputs and initializes artifact directories.
+2. `web` scouts candidate sources.
+3. Parallel `web` collectors capture one source each.
+4. `write` drafts `reports/report.md`.
+5. `write` performs editorial repair in place.
+6. The orchestrator validates groundedness and optionally calls `judge` over inline excerpts.
+7. Final output reports artifact paths and blockers.
 
 ## Goal
 
@@ -90,7 +108,7 @@ The editor task must ask it to:
 
 Before final reply, use your own read tool to inspect `reports/report.md`. Do not ask `chat` to read file paths; `chat` has no tools.
 
-If you use `chat` with persona `judge`, pass it the actual report excerpt, source list, or checklist text inline. The task must not contain path-only instructions such as "evaluate `reports/report.md`." Use `chat` only for semantic judgement over text you provide.
+If you use the `judge` preset for semantic review, pass it the actual report excerpt, source list, or checklist text inline. The task must not contain path-only instructions such as "evaluate `reports/report.md`."
 
 If validation fails, run one repair pass with `write` or `web` depending on the failure reason, then inspect the report again. If it still fails, stop and report the blocker with partial artifact paths.
 
@@ -108,9 +126,9 @@ If validation fails, run one repair pass with `write` or `web` depending on the 
 - Do not ask workers to write files unless their structural permissions allow it and the task explicitly needs an artifact.
 - Do not accept a report without inline citations and a source appendix.
 
-## Final Response
+## Final Output
 
-Keep the final response short. Prefer:
+The final response is the program output. Keep it short and point to artifacts on disk. Prefer:
 
 `Research completed. Report saved to ./reports/report.md.`
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepends promoted skill script dirs to PATH (see scripts/path-promoted-skills.txt).
 # From repo root:  source scripts/bootstrap.sh
-# Pi loads extensions/preset/index.ts (which pulls in bootstrap-path) automatically; this file is for
+# Pi loads extensions/preset/bootstrap.ts automatically; this file is for
 # normal shells (e.g. dev outside pi).
 
 set -euo pipefail

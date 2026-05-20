@@ -11,6 +11,8 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 - Replaced legacy `/agent-mode`, `/persona`, `SYSTEM.md`, `APPEND_SYSTEM.md`, and `PI_CODING_AGENT_DIR` worker routing with preset-defined agents in `agents/*.yml`.
 - Removed `~/.pi/mypi.json` and `~/.pi/mypi/env.yml` support; mypi runtime settings now live only in `~/.pi/mypi/mypi.env`.
 - Renamed the TTS speed setting from `TTS_WPM` to `SAY_TTS_WPM`.
+- Renamed the `subagent` worker override field from `persona` to `preset`.
+- Removed the `subagent.preset` override field; workflow workers are now called directly by preset name through `agent`.
 
 ### Added
 
@@ -20,12 +22,14 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 - Added shared preset runtime validation for prompt modes, tools, extensions, workers, themes, environment keys, and flat `agents/*.yml` layout.
 - Added `mypi.env.example` as the single mypi runtime settings template.
 - Added `/mypi-env-config` for viewing and editing `mypi.env`.
+- Added docs for presets, custom preset overlays, runtime env, commands, bootstrap, validation, and workflow prompt usage.
 
 ### Changed
 
 - Consolidated PR review prompts into one merge-readiness prompt and updated the pull request template to match the workflow.
 - Moved agent prompt resources into `shared/prompts/`, tool extensions into `extensions/tools/`, and package bootstrap code into `extensions/preset/bootstrap.ts`.
 - Preset activation now applies configured model, thinking level, scoped environment overrides, and best-effort context-file exclusion.
+- Rewrote docs as current-state package specs instead of refactor notes.
 
 ### Fixed
 

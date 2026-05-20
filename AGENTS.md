@@ -39,7 +39,7 @@ The repo root **`package.json`** sets **`"type": "module"`** so Node resolves ex
 
 ## Runtime env (`~/.pi/mypi/mypi.env`)
 
-mypi-owned runtime values (API keys, service URLs, TTS WPM) live in **`~/.pi/mypi/mypi.env`** (override: **`MYPI_ENV_FILE`**). This is intentionally the only mypi user config file; do not add `mypi.json` compatibility. See [`mypi.env.example`](mypi.env.example) and [`shared/runtime-env/README.md`](shared/runtime-env/README.md). Pi’s LLM credentials remain in `~/.pi/agent/auth.json`.
+mypi-owned runtime values (API keys, service URLs, TTS WPM) live in **`~/.pi/mypi/mypi.env`** (override: **`MYPI_ENV_FILE`**). This is intentionally the only mypi user config file. See [`mypi.env.example`](mypi.env.example) and [`shared/runtime-env/README.md`](shared/runtime-env/README.md). Pi’s LLM credentials remain in `~/.pi/agent/auth.json`.
 
 - **`extensions/preset/bootstrap.ts`** — On extension load, merges non-empty runtime env keys into `process.env` for unset keys only.
 - **`/mypi-env-config`** — Views and edits `mypi.env` (`SAY_TTS_WPM` default 300; API/URL keys default `""`).

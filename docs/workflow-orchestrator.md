@@ -1,114 +1,78 @@
 # Workflow Orchestrator
 
-## Purpose
+The workflow orchestrator is the preset-gated extension that provides the `subagent` tool. It lets the workflow preset execute natural-language workflow programs by delegating graph nodes to worker presets and tracking their returns, side effects, and traces.
 
-The workflow orchestrator provides multi-agent system behavior through a preset-aware extension and a `subagent` tool.
+## Activation
 
-It delegates bounded tasks to worker presets, collects their outputs, and returns concise operational results to the parent orchestrator.
-
-## Target Behavior
-
-Any preset can become an orchestrator by declaring:
+The extension module is package-loaded, but the tool only works when the active preset declares:
 
 ```yaml
 extensions:
   - workflow-orchestrator
 workers:
-  - chat
   - scout
-  - write
   - code
-  - web
 ```
 
-The `workflow-orchestrator` extension is loaded by the package but inactive unless the active preset opts into it.
-
-Every preset that can call subagents is a workflow preset and requires a clean session. This is implied by:
-
-```yaml
-extensions:
-  - workflow-orchestrator
-workers:
-  - scout
-```
-
-## Workflow Preset Activation
-
-Workflow presets are activated through normal preset mechanisms:
-
-```text
-/preset <workflow-preset>
-/preset
-pi --preset <workflow-preset>
-```
-
-Behavior:
-
-1. Warn that multi-agent workflows are designed to start from a fresh context, strictly follow a workflow prompt, and call subagents to keep the orchestrator context clean.
-2. Ask for confirmation before clearing the active conversation.
-3. On confirm, start a new session, switch to the selected workflow preset, reload resources/extensions, and show workflow branding.
-4. Notify the user to run the proper workflow prompt template, for example `/deepresearch ...`.
+The active preset's `workers:` list is the allowed worker catalog. The orchestrator does not infer workers from every installed preset.
 
 ## Worker Launching
 
-Workers should launch by preset name:
+Workers are launched from the parent's current working directory:
 
 ```text
 pi --preset <worker>
 ```
 
-The child process should run from the same cwd as the parent so user and project overlays apply consistently.
+Each worker receives an operational wrapper prompt explaining that it reports to the orchestrator, not directly to the user. Workers should return concise status, artifact paths, blockers, errors, and verification notes.
 
-The worker prompt should still include operational instructions:
+## Execution Model
 
-- The worker is answering the orchestrator, not the user.
-- Return concise results, artifact paths, blockers, and verification notes.
-- Do not ask the user questions.
-- Make safe assumptions or return a blocker.
-- When necessary, and defined in the workflow, subagent issues can be addressed by the orchestrator via HITL questionaire and/or notifications to the user.
+The workflow prompt is the program. The workflow preset is the interpreter and scheduler. `subagent` is the function-call primitive.
 
-## Worker Catalog
+Each call has:
 
-Decision: worker catalog is explicit in the orchestrator preset's `workers:` list.
+- `agent`: worker preset to run
+- `task`: argument payload
+- side effects: files, manifests, screenshots, traces, or other artifacts
+- return value: worker final reply
+- error return: nonzero exit, blocker text, missing artifact, or failed validation
 
-Do not infer worker presets from all installed presets, tags, or directories in v1.
+The orchestrator uses worker returns and artifact state to advance the workflow graph.
 
-Worker presets may set:
+## `subagent` Parameters
 
-```yaml
-userSelectable: false
-```
+The tool supports exactly one mode per call:
 
-This hides them from the interactive `/preset` menu and preset cycling while still allowing the orchestrator to launch them by name. Users may also explicitly activate them with `/preset <name>` or `pi --preset <name>` when debugging.
+- single: `agent` and `task`
+- parallel: `tasks[]`
+- chain: `chain[]`, where later tasks can use `{previous}`
+
+`agent` must be in the active preset's `workers:` list. Every worker is a preset, and the orchestrator launches it directly with `pi --preset <agent>`.
 
 ## Trace Behavior
 
-The orchestrator should keep trace behavior, but path names should move away from legacy `mas` or hardcoded agent directory assumptions.
+Each workflow run writes traces under:
 
-Desired trace properties:
+```text
+<cwd>/.pi/subagent-traces/<run-id>/
+```
 
-- Per-run trace directory under a durable project/user location.
-- Worker JSONL/session data grouped by run id.
-- Manifest listing worker tasks, outputs, exit state, model, and usage.
-- Parent session custom entry pointing to the trace bundle.
+The trace directory is workflow execution state. It contains `manifest.json` and worker session output. The parent session also gets a custom entry:
 
-## Implementation Status
+```text
+customType: mypi.subagent-traces
+data.traceRunId
+data.traceDir
+data.cwdSessionKey
+```
 
-- `extensions/tools/workflow-orchestrator.ts` is the preset-aware orchestrator extension.
-- It reads worker names from the active preset's `workers:` list.
-- It launches workers with `pi --preset <worker>`.
-- It appends workflow capability catalog text from preset worker names instead of `CAPABILITY.md` files.
-- Current trace paths use `.pi/subagent-traces/...`.
+Use `data.traceDir` as the canonical trace location.
 
-## Decisions
+## Clean Sessions
 
-- Keep the extension under `extensions/tools/workflow-orchestrator.ts`.
-- Gate behavior by active preset extension ID.
-- Use `workers:` from the active preset.
-- Spawn workers with `pi --preset <worker>`.
-- Keep `subagent` as an extension-provided tool implied by `workflow-orchestrator`.
-- Use normal preset activation for workflow presets.
+Workflow presets are intended to start from fresh context. If a workflow preset is restored into an active branch with existing user messages, mypi clears that preset state and asks the user to run `/new`, then select the workflow preset again.
 
-## Open Implementation Feedback
+## Worker Catalog Prompt
 
-- Decide whether worker capability text should stay generated from preset names or grow a richer YAML field.
+Before the agent starts, the extension appends a generated catalog of allowed worker presets to the system prompt. The catalog is derived from the active preset's `workers:` list.
