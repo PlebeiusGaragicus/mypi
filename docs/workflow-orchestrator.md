@@ -1,0 +1,82 @@
+# Workflow Orchestrator
+
+## Purpose
+
+The workflow orchestrator provides multi-agent system behavior through a preset-aware extension and a `subagent` tool.
+
+It delegates bounded tasks to worker presets, collects their outputs, and returns concise operational results to the parent orchestrator.
+
+## Target Behavior
+
+Any preset can become an orchestrator by declaring:
+
+```yaml
+extensions:
+  - workflow-orchestrator
+workers:
+  - chat
+  - scout
+  - write
+  - code
+  - web
+```
+
+The `workflow-orchestrator` extension is loaded by the package but inactive unless the active preset opts into it.
+
+## Worker Launching
+
+Workers should launch by preset name:
+
+```text
+pi --preset <worker>
+```
+
+The child process should run from the same cwd as the parent so user and project overlays apply consistently.
+
+The worker prompt should still include operational instructions:
+
+- The worker is answering the orchestrator, not the user.
+- Return concise results, artifact paths, blockers, and verification notes.
+- Do not ask the user questions.
+- Make safe assumptions or return a blocker.
+- When necessary, and defined in the workflow, subagent issues can be addressed by the orchestrator via HITL questionaire and/or notifications to the user.
+
+## Worker Catalog
+
+Decision: worker catalog is explicit in the orchestrator preset's `workers:` list.
+
+Do not infer worker presets from all installed presets, tags, or directories in v1.
+
+## Trace Behavior
+
+The orchestrator should keep trace behavior, but path names should move away from legacy `mas` or hardcoded agent directory assumptions.
+
+Desired trace properties:
+
+- Per-run trace directory under a durable project/user location.
+- Worker JSONL/session data grouped by run id.
+- Manifest listing worker tasks, outputs, exit state, model, and usage.
+- Parent session custom entry pointing to the trace bundle.
+
+## Current Code Conflicts
+
+- `agents/workflow/extensions/workflow-orchestrator/index.ts` lives under a specific agent directory; target location is `shared/extensions/workflow-orchestrator/`.
+- It hardcodes worker names and resolves workers as `agents/<name>/`.
+- It launches workers by setting `PI_CODING_AGENT_DIR` to an agent directory.
+- It appends workflow capability catalog text by reading `CAPABILITY.md` from agent directories.
+- Current trace paths use `.pi/subagent-traces/...`; the older README also references `$DOT_PI_OVERLAY/mas/subagent-traces`.
+
+## Decisions
+
+- Move the extension to `shared/extensions/workflow-orchestrator/`.
+- Gate behavior by active preset extension ID.
+- Use `workers:` from the active preset.
+- Spawn workers with `pi --preset <worker>`.
+- Keep `subagent` as an extension-provided tool implied by `workflow-orchestrator`.
+
+## Open Implementation Feedback
+
+- Define how the orchestrator reads the active preset's `workers:` list from the preset extension or event bus.
+- Define the trace root under the new mypi overlay/project model.
+- Decide whether worker capability text comes from preset YAML `description`, a `CAPABILITY.md` convention, or a new YAML field.
+
