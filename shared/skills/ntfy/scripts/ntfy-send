@@ -2,29 +2,20 @@
 
 import fs from "node:fs";
 import process from "node:process";
-import { ensureEnvKey } from "../../../mypi-config/ensure.js";
-import { resolveConfigPath } from "../../../mypi-config/paths.js";
+import { readRuntimeEnv, resolveRuntimeEnvPath, runtimeValue } from "../../../runtime-env/index.js";
 
 function normalizeBaseUrl(url) {
 	if (!url) return "";
 	return url.trim().replace(/\/+$/, "");
 }
 
-function pick(key, fileValue) {
-	const envVal = process.env[key]?.trim();
-	if (envVal && envVal !== `$${key}`) return envVal;
-	return fileValue?.trim() ?? "";
-}
-
 function loadNtfyConfig() {
-	const baseUrl = ensureEnvKey("NTFY_BASE_URL", "");
-	const user = ensureEnvKey("NTFY_USER", "");
-	const password = ensureEnvKey("NTFY_PASSWORD", "");
+	const env = readRuntimeEnv();
 
 	return {
-		baseUrl: normalizeBaseUrl(pick("NTFY_BASE_URL", baseUrl)),
-		user: pick("NTFY_USER", user),
-		password: pick("NTFY_PASSWORD", password),
+		baseUrl: normalizeBaseUrl(runtimeValue("NTFY_BASE_URL", env)),
+		user: runtimeValue("NTFY_USER", env),
+		password: runtimeValue("NTFY_PASSWORD", env),
 	};
 }
 
@@ -32,7 +23,7 @@ function requireNtfyConfig() {
 	const config = loadNtfyConfig();
 	if (!config.baseUrl) {
 		console.error("Error: ntfy is not configured.");
-		console.error(`Set env.NTFY_BASE_URL in ${resolveConfigPath()}`);
+		console.error(`Set NTFY_BASE_URL in ${resolveRuntimeEnvPath()} or run /mypi-env-config set NTFY_BASE_URL <url>`);
 		process.exit(1);
 	}
 	return config;
@@ -67,7 +58,7 @@ function usage() {
 	console.log("  --tags LIST     Comma-separated tags (ntfy Tags header)");
 	console.log("");
 	console.log("Requires NTFY_BASE_URL and optional NTFY_USER / NTFY_PASSWORD");
-	console.log(`in ~/.pi/mypi.json (env section) or the shell environment.`);
+	console.log(`in ~/.pi/mypi/mypi.env or the shell environment.`);
 }
 
 function parsePriority(raw) {

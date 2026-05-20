@@ -4,13 +4,13 @@ My personal `pi` extension package.
 
 It provides:
 
-1. a multi-agent system orchestrator mode with example workflow library and `/workflow-builder` skill
-1. agent "modes" with differentiated: (SYSTEM.md, tools, skills, themes, etc)
+1. a preset-based multi-agent workflow orchestrator with an example workflow library and workflow-builder skill
+1. agent presets with differentiated prompts, tools, skills, themes, and extension-provided tools
 1. my personal skills library
 1. scripts for controlling a self-hosted LM Studio or Ollama homelab
 1. leaves your "vanilla" `pi` installation alone
 
-User settings (API keys, ntfy, TTS speed) are stored in **`~/.pi/mypi.json`**. Copy [`mypi.json.example`](mypi.json.example) as a starting point or let extensions create keys on first use. See [`shared/mypi-config/CONFIG.md`](shared/mypi-config/CONFIG.md).
+Runtime settings (API keys, ntfy, TTS speed) are stored in **`~/.pi/mypi/mypi.env`**. The file is created from [`mypi.env.example`](mypi.env.example) on first runtime-env use and can be edited with `/mypi-env-config`. See [`shared/runtime-env/README.md`](shared/runtime-env/README.md).
 
 ## Install and Run
 

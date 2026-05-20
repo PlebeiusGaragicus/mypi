@@ -1,1 +1,0 @@
-Do not install python, npm, go, bun, homebrew, apt, etc packages by yourself.  You must always stop and ask the user.

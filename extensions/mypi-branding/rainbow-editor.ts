@@ -1,5 +1,5 @@
 /**
- * Rainbow editor — highlights "agent-mode" with an animated shine (see agent-mode extension).
+ * Rainbow editor — highlights "preset" with an animated shine.
  */
 
 import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -78,7 +78,7 @@ class RainbowEditor extends CustomEditor {
     const shinePos = cycle < 10 ? cycle : -1; // -1 means no shine (pause)
     return super
       .render(width)
-      .map((line) => line.replace(/agent-mode/gi, (m) => colorize(m, shinePos)));
+      .map((line) => line.replace(/preset/gi, (m) => colorize(m, shinePos)));
   }
 }
 

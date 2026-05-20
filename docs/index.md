@@ -11,21 +11,17 @@ This directory tracks the specs for aligning `mypi` around preset-defined agents
 - [Browser Control](browser-control.md): large browser-control skill/runtime behavior and its bootstrap requirements.
 - [Branding](branding.md): global mypi UI/quality-of-life extensions and what remains intentionally preset-independent.
 
-## Current Refactor Posture
+## Current Architecture
 
-These docs are decision records for an in-progress refactor. Each page calls out:
-
-- Target behavior.
-- Current code that conflicts with the target.
-- Ambiguity or feedback still needed before implementation.
+These docs describe the preset-based architecture and the remaining design decisions around package-level skills, runtime helpers, and workflow behavior.
 
 ## Shared Configuration
 
 The target user-level configuration file is:
 
 ```text
-~/.pi/mypi/env.yml
+~/.pi/mypi/mypi.env
 ```
 
-The package should ship `env.yml.example` as the definitive list of environment variables and simple user-tunable values used by mypi skills, scripts, and extensions.
+The package ships `mypi.env.example` as the definitive list of runtime environment variables and simple user-tunable values used by mypi skills, scripts, and extensions.
 

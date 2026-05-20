@@ -49,7 +49,7 @@ It currently composes the branding modules directly and is listed in `package.js
 - Minimal conflict: branding is already package-level and largely independent of agent mode.
 - Theme behavior may need to coordinate with preset-selected `theme`.
 - System prompt debug should understand preset-composed prompts after the refactor.
-- Existing per-feature config files such as a TTS WPM file should migrate to `~/.pi/mypi/env.yml` when they are simple user configuration values.
+- Existing per-feature config files such as a TTS WPM file should migrate to `~/.pi/mypi/mypi.env` when they are simple user configuration values.
 - Workflow branding should be limited to a simple `MULTI-AGENT SYSTEM` header/title.
 
 ## Decisions
@@ -65,5 +65,5 @@ It currently composes the branding modules directly and is listed in `package.js
 
 - Decide whether theme cycling should cycle all loaded themes or prioritize package shared themes.
 - Verify `/save` and `/say` remain appropriate as global commands.
-- Define the env keys used by branding in `env.yml.example`.
+- Define the env keys used by branding in `mypi.env.example`.
 

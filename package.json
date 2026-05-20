@@ -13,6 +13,9 @@
   "type": "module",
   "scripts": {
     "postinstall": "bash scripts/hello-world.sh",
+    "presets:check": "node scripts/check-presets.mjs",
+    "presets:test": "node scripts/test-presets.mjs",
+    "runtime-env:test": "node scripts/test-runtime-env.mjs",
     "browser:install": "cd utilities/browser-runtime && bun install",
     "browser:build": "cd utilities/browser-runtime && bun run build",
     "browser:test": "cd utilities/browser-runtime && bun test",
@@ -20,12 +23,21 @@
   },
   "pi": {
     "extensions": [
-      "extensions/agent-mode/index.ts",
-      "agents/workflow/extensions/workflow-orchestrator/index.ts",
+      "extensions/preset/index.ts",
+      "extensions/tools/workflow-orchestrator.ts",
+      "extensions/tools/questionnaire.ts",
       "extensions/mypi-branding/index.ts"
     ],
     "skills": [],
     "prompts": [],
-    "themes": ["shared/themes/github-dark-default.json"]
+    "themes": [
+      "shared/themes/github-dark-default.json",
+      "shared/themes/midnight-ocean.json",
+      "shared/themes/nightowl.json",
+      "shared/themes/ocean-breeze.json",
+      "shared/themes/rose-pine.json",
+      "shared/themes/synthwave.json",
+      "shared/themes/tokyo-night.json"
+    ]
   }
 }

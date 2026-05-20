@@ -8,8 +8,6 @@ disable-model-invocation: false
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`exa-search`**, **`exa-contents`**, and **`exa-similar`** by basename only (do not call `node` with paths into this skill).
 
-If a run fails with a configuration error on stderr, set **`env.EXA_API_KEY`** in **`~/.pi/mypi.json`** — see [`mypi.json.example`](../../../mypi.json.example) at the package root. Shell `EXA_API_KEY` overrides the file when non-empty.
-
 The scripts are intentionally verbose on failure: missing keys, unknown options, missing option values, and Exa HTTP errors print a specific `Error:` line to stderr and exit nonzero.
 
 ## Commands
@@ -72,6 +70,5 @@ exa-similar https://example.com/article --num 5
 ## Failure Handling
 
 - If a script exits nonzero, read stderr before retrying.
-- If stderr indicates missing configuration, ask the user to set **`env.EXA_API_KEY`** in **`~/.pi/mypi.json`** (or run **`/mypi-config`** in Pi for the path).
 - If Exa returns an HTTP error, report the status and provider message to the user.
 - If output is too verbose, retry with fewer results or use `--highlights` instead of `--text`.

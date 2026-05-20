@@ -1,0 +1,13 @@
+description: General conversation without tools
+userSelectable: true
+includeContextFiles: false
+
+prompt:
+  base: raw
+  system: |
+    You are a helpful assistant.
+
+tools: none
+
+promptDirs:
+  - shared/prompts/chat

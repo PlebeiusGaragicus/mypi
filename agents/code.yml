@@ -1,0 +1,24 @@
+description: Code implementation, tests, builds, and command execution
+userSelectable: true
+thinkingLevel: high
+includeContextFiles: true
+
+prompt:
+  base: pi
+  append: |
+    Do not install python, npm, go, bun, homebrew, apt, etc packages by yourself. You must always stop and ask the user.
+
+tools: include
+includeTools:
+  - ls
+  - find
+  - grep
+  - read
+  - write
+  - edit
+  - bash
+
+promptDirs:
+  - shared/prompts/code
+promptFiles:
+  - shared/prompts/introduction.md

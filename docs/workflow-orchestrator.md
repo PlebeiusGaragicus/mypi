@@ -92,17 +92,17 @@ Desired trace properties:
 - Manifest listing worker tasks, outputs, exit state, model, and usage.
 - Parent session custom entry pointing to the trace bundle.
 
-## Current Code Conflicts
+## Implementation Status
 
-- `agents/workflow/extensions/workflow-orchestrator/index.ts` lives under a specific agent directory; target location is `shared/extensions/workflow-orchestrator/`.
-- It hardcodes worker names and resolves workers as `agents/<name>/`.
-- It launches workers by setting `PI_CODING_AGENT_DIR` to an agent directory.
-- It appends workflow capability catalog text by reading `CAPABILITY.md` from agent directories.
-- Current trace paths use `.pi/subagent-traces/...`; the older README also references `$DOT_PI_OVERLAY/mas/subagent-traces`.
+- `extensions/tools/workflow-orchestrator.ts` is the preset-aware orchestrator extension.
+- It reads worker names from the active preset's `workers:` list.
+- It launches workers with `pi --preset <worker>`.
+- It appends workflow capability catalog text from preset worker names instead of `CAPABILITY.md` files.
+- Current trace paths use `.pi/subagent-traces/...`.
 
 ## Decisions
 
-- Move the extension to `shared/extensions/workflow-orchestrator/`.
+- Keep the extension under `extensions/tools/workflow-orchestrator.ts`.
 - Gate behavior by active preset extension ID.
 - Use `workers:` from the active preset.
 - Spawn workers with `pi --preset <worker>`.
@@ -111,7 +111,4 @@ Desired trace properties:
 
 ## Open Implementation Feedback
 
-- Define how the orchestrator reads the active preset's `workers:` list from the preset extension or event bus.
-- Define the trace root under the new mypi overlay/project model.
-- Decide whether worker capability text comes from preset YAML `description`, a `CAPABILITY.md` convention, or a new YAML field.
-
+- Decide whether worker capability text should stay generated from preset names or grow a richer YAML field.

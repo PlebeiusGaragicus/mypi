@@ -25,11 +25,8 @@ The skill should document `$B` as an environment-backed command, not as a path-p
 
 ## Bootstrap Target
 
-Current behavior sets `$B` from `extensions/agent-mode/bootstrap-browser.ts`.
+Current behavior sets `$B` from `extensions/preset/bootstrap.ts`, loaded by the preset extension bundle.
 
-Target behavior after presets:
-
-- Browser bootstrap must not depend on `agent-mode`.
 - A package-level bootstrap extension can continue to set `$B` globally when the runtime exists.
 - Presets that include browser skills should expose the skill and built-in tools needed to use it.
 
@@ -58,9 +55,9 @@ The skill must preserve these behaviors:
 
 ## Current Code/Spec Conflicts
 
-- `agents/web/skills/browser-control/SKILL.md` says `$B` is set by the agent-mode extension.
-- The skill currently lives under `agents/web/skills/`; target is likely `shared/skills/browser-control/` plus preset inclusion.
-- Bootstrap is currently coupled to `extensions/agent-mode/index.ts`.
+- `shared/skills/browser-control/SKILL.md` documents `$B` as a package bootstrap command.
+- The `web` preset includes `shared/skills/browser-control`.
+- Bootstrap is loaded through `extensions/preset/index.ts`, not through legacy agent-mode.
 
 ## Decisions
 

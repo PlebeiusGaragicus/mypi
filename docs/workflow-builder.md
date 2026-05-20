@@ -50,7 +50,7 @@ The workflow prompt describes the step-by-step orchestration policy, artifact co
 
 ## Current Code/Spec Conflicts
 
-- `agents/workflow/skills/workflow-builder/SKILL.md` still refers to `mas`, `$DOT_PI_DIR`, `$DOT_PI_OVERLAY`, and bundled dot-pi paths.
+- `shared/skills/workflow-builder/SKILL.md` now describes preset-based workflow prompt locations and worker names.
 - The current workflow-builder skill uses `.pi/prompts/` as the project-local prompt target; this remains reasonable if the orchestrator preset references `.pi/prompts` in `promptDirs`.
 - The skill references docs paths such as `$DOT_PI_DIR/docs/workflow-writing-guide.md`; the new docs live under this repo's `docs/` directory and need updated references.
 - It references worker names `chat`, `scout`, `write`, `code`, and `web`, which remain valid as preset names but should be launched through `pi --preset <worker>`.

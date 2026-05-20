@@ -8,7 +8,7 @@ disable-model-invocation: false
 
 Use when the user wants **push notifications** on phone or desktop via [ntfy](https://ntfy.sh/).
 
-This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`ntfy-send`** by basename with the message text. For a quick test, a single quoted string is enough. If notifications fail with a configuration error on stderr, set **`env.NTFY_BASE_URL`** (and optional **`NTFY_USER`** / **`NTFY_PASSWORD`**) in **`~/.pi/mypi.json`** — see [`mypi.json.example`](../../../mypi.json.example) at the package root.
+This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`ntfy-send`** by basename with the message text. For a quick test, a single quoted string is enough.
 
 ## Default topic (`bot`)
 

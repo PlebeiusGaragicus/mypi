@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prepends promoted skill script dirs to PATH (see scripts/path-promoted-skills.txt).
 # From repo root:  source scripts/bootstrap.sh
-# Pi loads extensions/agent-mode/index.ts (which pulls in bootstrap-path) automatically; this file is for
+# Pi loads extensions/preset/index.ts (which pulls in bootstrap-path) automatically; this file is for
 # normal shells (e.g. dev outside pi).
 
 set -euo pipefail
@@ -32,7 +32,7 @@ if [[ -n "$_prefix" ]]; then
 	export PATH="${_prefix}${PATH:+:${PATH}}"
 fi
 
-_apply_env="${_mypi_root}/shared/mypi-config/apply-shell-env.mjs"
+_apply_env="${_mypi_root}/shared/runtime-env/apply-shell-env.mjs"
 if [[ -f "$_apply_env" ]]; then
 	# shellcheck disable=SC1090
 	eval "$(node "$_apply_env")"

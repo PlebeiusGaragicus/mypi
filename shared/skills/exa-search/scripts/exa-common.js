@@ -1,18 +1,10 @@
 import process from "node:process";
-import { ensureEnvKey } from "../../../mypi-config/ensure.js";
-import { resolveConfigPath } from "../../../mypi-config/paths.js";
+import { readRuntimeEnv, resolveRuntimeEnvPath, runtimeValue } from "../../../runtime-env/index.js";
 
 export const API_BASE = "https://api.exa.ai";
 
-function pick(key, fileValue) {
-	const envVal = process.env[key]?.trim();
-	if (envVal && envVal !== `$${key}`) return envVal;
-	return fileValue?.trim() ?? "";
-}
-
 export function loadExaKey() {
-	const fileValue = ensureEnvKey("EXA_API_KEY", "");
-	const key = pick("EXA_API_KEY", fileValue);
+	const key = runtimeValue("EXA_API_KEY", readRuntimeEnv());
 	return key || null;
 }
 
@@ -21,9 +13,9 @@ export function requireExaKey() {
 	if (apiKey) return apiKey;
 
 	console.error("Error: Exa API key is not configured.");
-	console.error(`Set env.EXA_API_KEY in ${resolveConfigPath()}`);
+	console.error(`Set EXA_API_KEY in ${resolveRuntimeEnvPath()} or run /mypi-env-config set EXA_API_KEY <key>`);
 	console.error("Get your key from: https://dashboard.exa.ai/api-keys");
-	console.error("In Pi: run /mypi-config for the config path.");
+	console.error("In Pi: run /mypi-env-config for setup.");
 	process.exit(1);
 }
 

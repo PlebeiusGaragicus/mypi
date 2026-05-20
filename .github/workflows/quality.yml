@@ -52,3 +52,20 @@ jobs:
           grep -q '^### Fixed' CHANGELOG.md
           grep -q '^### Removed' CHANGELOG.md
           grep -q '^### Security' CHANGELOG.md
+
+  preset-config:
+    name: Preset configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate preset files
+        run: npm run presets:check
+
+      - name: Run preset runtime tests
+        run: npm run presets:test
+
+      - name: Run runtime env tests
+        run: npm run runtime-env:test

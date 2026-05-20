@@ -23,5 +23,5 @@ If there is no issue, explain why this PR does not need one:
 
 ## AI Review
 
-- [ ] PR review completed with `agents/code/prompts/pr.md` or equivalent
-- [ ] Changelog audit completed with `agents/code/prompts/cl.md` when release-note risk is high
+- [ ] PR review completed with `shared/prompts/code/pr.md` or equivalent
+- [ ] Changelog audit completed with `shared/prompts/code/cl.md` when release-note risk is high

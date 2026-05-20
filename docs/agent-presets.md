@@ -135,9 +135,9 @@ workers:
 
 Model fields are optional and intentionally omitted from the canonical example. When `provider` / `model` are omitted, activation should keep the currently selected model in an interactive Pi session. For worker/subagent launches, omitted model fields should let Pi use its normal configured default.
 
-`thinkingLevel` is also optional. When present, activating the preset should set the current thinking level in an interactive Pi session. For worker/subagent launches, it should act as the default thinking level for that preset invocation.
+`thinkingLevel` is also optional. When present, activating the preset sets the current thinking level when the active Pi build exposes thinking-level switching to extensions. For worker/subagent launches, the child `pi --preset <worker>` invocation applies that worker preset's default thinking level.
 
-`environment` is optional. When present, it overrides same-name environment variables for this preset invocation. It does not wipe the whole process environment.
+`environment` is optional. When present, it overrides same-name environment variables for this preset invocation. It does not wipe the whole process environment, and the preset extension restores previous values when switching away from the preset.
 
 `userSelectable` defaults to `true`. Set `userSelectable: false` for internal worker presets such as classifiers or judges that should not appear in the interactive `/preset` menu or keyboard cycling.
 
@@ -190,7 +190,7 @@ Preset `extensions` are activation IDs for already-loaded extension modules. The
 
 Decision: use Pi's shared event bus as the low-coupling runtime mechanism for active preset state. Session custom state is for persistence.
 
-Feedback needed during implementation: define exact extension-ID-to-tool mapping. Options include source-path mapping, extension self-declaration over the event bus, or a small registry exported by the preset extension.
+Implementation: extension-ID-to-tool mapping is centralized in `shared/presets/runtime.mjs`. Current mappings are `workflow-orchestrator -> subagent` and `questionnaire -> questionnaire`.
 
 ## Context Files
 
@@ -208,23 +208,23 @@ Strict agents such as classifiers, judges, or deterministic workflow workers sho
 includeContextFiles: false
 ```
 
-Implementation note: Pi already supports `--no-context-files` at session creation. Preset-specific toggling may need to happen during prompt composition using `systemPromptOptions`.
+Implementation note: Pi already supports `--no-context-files` at session creation. The preset extension enforces strict context exclusion for `prompt.base: raw` by replacing the generated prompt. For non-raw prompts with `includeContextFiles: false`, it also removes context file text from `systemPromptOptions.contextFiles` when Pi provides those entries, and warns when the active Pi build cannot guarantee a perfect runtime removal.
 
 ## Environment
 
 Decision: mypi environment configuration has one user-level source of truth:
 
 ```text
-~/.pi/mypi/env.yml
+~/.pi/mypi/mypi.env
 ```
 
 The package should ship:
 
 ```text
-env.yml.example
+mypi.env.example
 ```
 
-`env.yml.example` is the definitive list of environment variables mypi cares about across skills, scripts, and global extensions. The user's `~/.pi/mypi/env.yml` stores actual values.
+`mypi.env.example` is the definitive list of environment variables mypi cares about across skills, scripts, and global extensions. The user's `~/.pi/mypi/mypi.env` stores actual values and is lazily created on first runtime-env use.
 
 There are no preset-local `env` files and no `environmentFiles` field. Preset YAML may define an inline `environment` map for identity-specific or denial/override values:
 
@@ -235,19 +235,19 @@ environment:
   TAVILY_API_KEY: ""
 ```
 
-Merge rule: same-key replacement. A preset-defined key overrides the inherited value for that preset invocation. Setting a key to an empty string intentionally denies that value to scripts that check it. Omitted keys remain inherited from the process or `~/.pi/mypi/env.yml`.
+Merge rule: same-key replacement. A preset-defined key overrides the inherited value for that preset invocation. Setting a key to an empty string intentionally denies that value to scripts that check it. Omitted keys remain inherited from the process or `~/.pi/mypi/mypi.env`.
 
 Environment values are for runtime tools and scripts. They must not be injected into system prompts. Skills can mention required variable names in `SKILL.md`, but not secret values.
 
-Future command:
+Runtime env command:
 
 ```text
 /mypi-env-config
 ```
 
-This command should view and modify `~/.pi/mypi/env.yml` so users do not need to hand-edit YAML.
+This command views and modifies `~/.pi/mypi/mypi.env` so users do not need to hand-edit dotenv values.
 
-Implementation note: scripts invoked by preset skills should receive the effective environment. The implementation may need to pass an env overlay to bash/tool execution rather than mutating global `process.env`.
+Implementation note: the preset extension applies inline `environment` keys to `process.env` for the active preset and restores previous values when switching presets or shutting down. Child tools inherit the effective process environment.
 
 ## Resource Discovery
 
@@ -310,21 +310,20 @@ Selecting a workflow preset through `/preset <name>` or the `/preset` menu shoul
 - Remove `/persona`.
 - Chat personas become normal presets.
 - Workflow workers launch by preset name, not by `PI_CODING_AGENT_DIR=agents/<name>`.
-- The workflow orchestrator moves to `shared/extensions/workflow-orchestrator`.
+- The workflow orchestrator lives at `extensions/tools/workflow-orchestrator.ts`.
 - Deprecate preset-owned `SYSTEM.md`, `APPEND_SYSTEM.md`, `skills/`, and `prompts/` directories.
+- Remove `~/.pi/mypi.json`; `~/.pi/mypi/mypi.env` is the only mypi user config file.
 
-## Current Code Conflicts
+## Implementation Status
 
-- `extensions/agent-mode/agent-mode.ts` hardcodes modes, tools, prompt files, resources, and persona behavior.
-- `agents/workflow/extensions/workflow-orchestrator/index.ts` hardcodes worker directories under `agents/<name>` and launches child Pi with `PI_CODING_AGENT_DIR`.
-- `package.json` still loads `extensions/agent-mode/index.ts` and `agents/workflow/extensions/workflow-orchestrator/index.ts`.
-- Existing docs/spec drafts referenced central `agent-presets.yml` and directory-shaped `agents/<preset>/<preset>.yml`; target is now one YAML file per preset at `agents/<preset>.yml` within source roots.
+- `extensions/preset/index.ts` loads flat preset YAML files, exposes `/preset`, applies tools/resources, and publishes active preset state.
+- `extensions/tools/workflow-orchestrator.ts` reads worker names from the active preset state and launches child workers with `pi --preset <worker>`.
+- `package.json` loads the preset extension, shared workflow orchestrator, and questionnaire extension.
+- Existing package presets live as one YAML file per preset at `agents/<preset>.yml`.
 
 ## Open Implementation Feedback
 
 - Confirm package-root discovery in both development and installed package contexts.
-- Confirm the prompt-composition path for `includeContextFiles: false`.
-- Decide the extension-ID-to-tool mapping mechanism.
 
 ## Deferred
 

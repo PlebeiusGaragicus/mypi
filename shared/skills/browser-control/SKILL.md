@@ -55,7 +55,7 @@ bunx playwright install chromium
 bun run browser:build
 ```
 
-**`$B`** is set automatically when Pi loads the agent-mode extension (`utilities/browser-runtime/dist/browse`). If **`$B`** is missing:
+**`$B`** is set automatically when Pi loads this package's preset bootstrap (`utilities/browser-runtime/dist/browse`). If **`$B`** is missing:
 
 ```bash
 export B="$(pwd)/utilities/browser-runtime/dist/browse"

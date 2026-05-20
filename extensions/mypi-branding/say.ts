@@ -16,7 +16,7 @@
  * - Fenced code blocks (```) are omitted from speech entirely; exception: ```txt and ```markdown
  *   fences have their content spoken (fence lines themselves are always omitted).
  * - Only runs when `ctx.hasUI` (interactive TUI) and a TTS backend is available.
- * - Speech rate: per-device WPM stored in `~/.pi/mypi.json` (`tts.wpm`, default 300). Adjust with `/tts-wpm`.
+ * - Speech rate: per-device WPM stored in `~/.pi/mypi/mypi.env` (`SAY_TTS_WPM`, default 300). Adjust with `/tts-wpm`.
  * - A new user prompt, `/stop-speaking`, `/tts-toggle off`, or pi exiting all cancel speech.
  *
  * Platform backends are selected inline. Currently: macOS `say`, Linux `espeak-ng`.
@@ -27,7 +27,7 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { ensureTtsWpm, setTtsWpm } from "../../shared/mypi-config/ensure.js";
+import { readRuntimeEnv, writeRuntimeEnv } from "../../shared/runtime-env/index.js";
 
 interface TtsBackend {
 	name: string;
@@ -80,9 +80,24 @@ const backend = resolveBackend();
 const URL_REDACTED = "URL redacted";
 const MAX_CHARS = 32_000;
 const DEFAULT_WPM = 300;
+const WPM_ENV_KEY = "SAY_TTS_WPM";
 
-/** Words per minute; loaded from ~/.pi/mypi.json on session_start, adjustable via /tts-wpm */
+/** Words per minute; loaded from ~/.pi/mypi/mypi.env on session_start, adjustable via /tts-wpm */
 let currentWpm = DEFAULT_WPM;
+
+function readConfiguredWpm(defaultWpm = DEFAULT_WPM): number {
+	const env = readRuntimeEnv();
+	const raw = process.env[WPM_ENV_KEY]?.trim() || env[WPM_ENV_KEY]?.trim() || "";
+	const wpm = Number.parseInt(raw, 10);
+	return Number.isFinite(wpm) && wpm > 0 ? wpm : defaultWpm;
+}
+
+function writeConfiguredWpm(wpm: number): void {
+	const env = readRuntimeEnv();
+	env[WPM_ENV_KEY] = String(wpm);
+	writeRuntimeEnv(env);
+	process.env[WPM_ENV_KEY] = String(wpm);
+}
 
 /** In-memory; synced from `--tts-enable` on every session_start; `/tts-toggle` until next session_start */
 let autoTtsEnabled = false;
@@ -388,7 +403,7 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async () => {
 		autoTtsEnabled = pi.getFlag("tts-enable") === true;
 		try {
-			currentWpm = ensureTtsWpm(DEFAULT_WPM);
+			currentWpm = readConfiguredWpm(DEFAULT_WPM);
 		} catch {
 			currentWpm = DEFAULT_WPM;
 		}
@@ -519,7 +534,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("tts-wpm", {
-		description: "Get or set TTS words-per-minute (persists to ~/.pi/mypi.json tts.wpm)",
+		description: "Get or set TTS words-per-minute (persists to ~/.pi/mypi/mypi.env SAY_TTS_WPM)",
 		handler: async (args, ctx) => {
 			if (!ctx.hasUI) return;
 			const a = args.trim();
@@ -534,7 +549,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			currentWpm = val;
 			try {
-				setTtsWpm(val);
+				writeConfiguredWpm(val);
 			} catch {
 				/* ignore — config dir may not be writable */
 			}

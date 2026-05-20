@@ -1,18 +1,10 @@
 import process from "node:process";
-import { ensureEnvKey } from "../../../mypi-config/ensure.js";
-import { resolveConfigPath } from "../../../mypi-config/paths.js";
+import { readRuntimeEnv, resolveRuntimeEnvPath, runtimeValue } from "../../../runtime-env/index.js";
 
 export const API_BASE = "https://api.tavily.com";
 
-function pick(key, fileValue) {
-	const envVal = process.env[key]?.trim();
-	if (envVal && envVal !== `$${key}`) return envVal;
-	return fileValue?.trim() ?? "";
-}
-
 export function loadTavilyKey() {
-	const fileValue = ensureEnvKey("TAVILY_API_KEY", "");
-	const key = pick("TAVILY_API_KEY", fileValue);
+	const key = runtimeValue("TAVILY_API_KEY", readRuntimeEnv());
 	return key || null;
 }
 
@@ -21,9 +13,9 @@ export function requireTavilyKey() {
 	if (apiKey) return apiKey;
 
 	console.error("Error: Tavily API key is not configured.");
-	console.error(`Set env.TAVILY_API_KEY in ${resolveConfigPath()}`);
+	console.error(`Set TAVILY_API_KEY in ${resolveRuntimeEnvPath()} or run /mypi-env-config set TAVILY_API_KEY <key>`);
 	console.error("Get your key from: https://app.tavily.com");
-	console.error("In Pi: run /mypi-config for the config path.");
+	console.error("In Pi: run /mypi-env-config for setup.");
 	process.exit(1);
 }
 

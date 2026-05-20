@@ -8,8 +8,6 @@ disable-model-invocation: false
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`tavily-search`** and **`tavily-extract`** by basename only (do not call `node` with paths into this skill).
 
-If a run fails with a configuration error on stderr, set **`env.TAVILY_API_KEY`** in **`~/.pi/mypi.json`** — see [`mypi.json.example`](../../../mypi.json.example) at the package root. Shell `TAVILY_API_KEY` overrides the file when non-empty.
-
 The scripts are intentionally verbose on failure: missing keys, unknown options, missing option values, rate limits, plan limits, and Tavily HTTP errors print a specific `Error:` line to stderr and exit nonzero.
 
 ## Commands
@@ -69,7 +67,6 @@ Options:
 ## Failure Handling
 
 - If a script exits nonzero, read stderr before retrying.
-- If stderr indicates missing configuration, ask the user to set **`env.TAVILY_API_KEY`** in **`~/.pi/mypi.json`** (or run **`/mypi-config`** in Pi for the path).
 - If Tavily returns HTTP 429, report the retry guidance and avoid immediate repeated calls.
 - If Tavily returns a plan or credit limit error, tell the user and stop searching.
 - If output is too verbose, retry with fewer results or a lower character cap.

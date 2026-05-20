@@ -114,8 +114,8 @@ Skill docs should be explicit about environment variables they depend on, but sh
 Guidance:
 
 - Scripts should usually "just work" without the agent reasoning about environment variables.
-- Keep secrets in `~/.pi/mypi/env.yml`, provider-specific auth stores, or user shell environment, not in the skill folder.
-- Use package `env.yml.example` as the definitive list of mypi-managed environment variables.
+- Keep secrets and runtime settings in `~/.pi/mypi/mypi.env`, provider-specific auth stores, or user shell environment, not in the skill folder.
+- Use package `mypi.env.example` as the definitive list of mypi-managed environment variables.
 - Do not create per-skill or per-preset `env` files.
 - Do not include runtime state, cache files, browser sessions, logs, or generated outputs in the skill inventory.
 - For mypi package scripts, prefer package-level bootstrap helpers over per-skill shell sourcing.
@@ -180,7 +180,7 @@ During explicit skill development or review, the builder may mention malformed s
 - The earlier draft referenced `./.pi/agent/skills/<skill-name>/`, but Pi project skills are `.pi/skills/`, not `.pi/agent/skills/`.
 - The preset refactor does not add preset-owned skill directories. Presets reference existing skill directories such as `shared/skills/<skill-name>/` or `.pi/skills/<skill-name>/`.
 - Existing repo skills mix `disable-model-invocation: true` and `false`; the builder must choose intentionally rather than default blindly.
-- `browser-control` currently says `$B` is set by the agent-mode extension. After the preset refactor, the browser bootstrap must move out of agent-mode coupling.
+- `browser-control` uses the package preset bootstrap for `$B`; web-capable presets include the shared skill explicitly.
 
 ## Open Implementation Feedback
 
