@@ -26,8 +26,8 @@ Legacy `mas` terminology should become preset-driven workflow terminology.
 Target locations:
 
 - Package-shipped workflow prompts: read-only package resources.
-- User-wide workflow prompts: `~/.pi/mypi/agents/<orchestrator>/prompts/` or another user overlay resource path selected by the preset.
-- Project workflow prompts: `.pi/mypi/agents/<orchestrator>/prompts/`.
+- User-wide workflow prompts: a prompt directory referenced by the orchestrator preset, such as `~/.pi/mypi/prompts/`.
+- Project workflow prompts: Pi-native `.pi/prompts/`, referenced by the orchestrator preset through `promptDirs`.
 
 The workflow builder should not write into the installed package tree because those files can be reset by update.
 
@@ -51,7 +51,7 @@ The workflow prompt describes the step-by-step orchestration policy, artifact co
 ## Current Code/Spec Conflicts
 
 - `agents/workflow/skills/workflow-builder/SKILL.md` still refers to `mas`, `$DOT_PI_DIR`, `$DOT_PI_OVERLAY`, and bundled dot-pi paths.
-- The current workflow-builder skill uses `.pi/prompts/` as the project-local prompt target; the preset refactor wants project-local mypi resources under `.pi/mypi/agents/<preset>/prompts/`.
+- The current workflow-builder skill uses `.pi/prompts/` as the project-local prompt target; this remains reasonable if the orchestrator preset references `.pi/prompts` in `promptDirs`.
 - The skill references docs paths such as `$DOT_PI_DIR/docs/workflow-writing-guide.md`; the new docs live under this repo's `docs/` directory and need updated references.
 - It references worker names `chat`, `scout`, `write`, `code`, and `web`, which remain valid as preset names but should be launched through `pi --preset <worker>`.
 
@@ -65,6 +65,6 @@ The workflow prompt describes the step-by-step orchestration policy, artifact co
 ## Open Implementation Feedback
 
 - Choose the default durable user workflow location under `~/.pi/mypi`.
-- Decide whether project workflow prompts should always target `.pi/mypi/agents/<orchestrator>/prompts/` or allow `.pi/mypi/prompts/` as a shared project prompt pool.
+- Decide the default user-wide prompt directory, likely `~/.pi/mypi/prompts/`.
 - Update the workflow-builder skill after the preset loader and final resource layout are implemented.
 

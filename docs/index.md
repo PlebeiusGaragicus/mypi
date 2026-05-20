@@ -4,7 +4,7 @@ This directory tracks the specs for aligning `mypi` around preset-defined agents
 
 ## Feature Specs
 
-- [Agent Presets](agent-presets.md): per-agent YAML definitions, resource overlays, prompt modes, tool lists, extension activation, environment overlays, and migration from `/agent-mode` / personas.
+- [Agent Presets](agent-presets.md): YAML-only per-agent definitions, resource references, prompt modes, tool lists, extension activation, environment overlays, and migration from `/agent-mode` / personas.
 - [Skill Builder](skill-builder.md): conventions for creating and reviewing Pi skills, including prompt-visible vs command-only skills, path promotion, and environment-backed tools.
 - [Workflow Builder](workflow-builder.md): workflow prompt authoring flow and how it should move from legacy `mas` overlay assumptions to preset-driven workflows.
 - [Workflow Orchestrator](workflow-orchestrator.md): multi-agent system orchestration, `workers:` catalogs, `subagent` behavior, and migration of the current workflow extension.

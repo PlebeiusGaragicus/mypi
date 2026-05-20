@@ -30,11 +30,12 @@ mypi shared skills in this repository:
 shared/skills/<skill-name>/
 ```
 
-mypi preset-scoped skills:
+Presets do not own skill directories. A preset that needs skills references existing locations via `skillDirs`, such as:
 
-```text
-agents/<preset>/skills/<skill-name>/
-.pi/mypi/agents/<preset>/skills/<skill-name>/
+```yaml
+skillDirs:
+  - shared/skills/arxiv-search
+  - .pi/skills/project-skill
 ```
 
 Repo-local conventions for `shared/skills` are the reference style for this project. The builder should not assume every Pi installation has the same shared-skill path or path-promotion registry.
@@ -177,7 +178,7 @@ During explicit skill development or review, the builder may mention malformed s
 ## Current Code/Spec Conflicts
 
 - The earlier draft referenced `./.pi/agent/skills/<skill-name>/`, but Pi project skills are `.pi/skills/`, not `.pi/agent/skills/`.
-- The preset refactor adds `.pi/mypi/agents/<preset>/skills/` as a preset-scoped resource location; this is separate from Pi-native `.pi/skills/`.
+- The preset refactor does not add preset-owned skill directories. Presets reference existing skill directories such as `shared/skills/<skill-name>/` or `.pi/skills/<skill-name>/`.
 - Existing repo skills mix `disable-model-invocation: true` and `false`; the builder must choose intentionally rather than default blindly.
 - `browser-control` currently says `$B` is set by the agent-mode extension. After the preset refactor, the browser bootstrap must move out of agent-mode coupling.
 

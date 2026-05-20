@@ -9,42 +9,36 @@ A preset is a complete agent profile. It can define:
 - System prompt behavior.
 - Pi built-in tools.
 - Preset-aware extension activation.
-- Skills, slash prompts, themes, and other resources.
+- Skills, slash prompts, themes, and other resources by reference.
 - Model and thinking level.
 - Workflow/subagent behavior.
 
-Small agents should fit entirely in one YAML file. Larger agents can use a directory only when they need files.
+Agents are defined strictly in YAML. Larger resources such as skills, prompts, scripts, and assets live outside the agent definition and are referenced by path.
 
 ## Agent Definition Files
 
 Decision: agents are defined per preset, not in one central `agent-presets.yml`.
 
-Within any mypi agent source root, a preset can be defined in either shape:
+Within any mypi agent source root, a preset is defined as:
 
 ```text
 agents/<preset>.yml
-agents/<preset>/<preset>.yml
 ```
 
 When the source root is a project-local `.pi/mypi` directory, those become:
 
 ```text
 .pi/mypi/agents/<preset>.yml
-.pi/mypi/agents/<preset>/<preset>.yml
 ```
 
-The directory form is used when the preset also owns file resources:
+Preset-owned directories are intentionally not part of the v1 model. Do not define:
 
 ```text
 .pi/mypi/agents/<preset>/
-  <preset>.yml
-  SYSTEM.md
-  APPEND_SYSTEM.md
-  skills/
-  prompts/
+agents/<preset>/
 ```
 
-YAML-only presets should use `.pi/mypi/agents/<preset>.yml` to avoid an unnecessary directory.
+If a preset needs skills or prompt templates, list existing resource locations in `skillDirs`, `promptFiles`, or `promptDirs`.
 
 ## Source Layers
 
@@ -60,7 +54,7 @@ Example project walk:
 
 ```text
 ~/Documents/.pi/mypi/agents/scout.yml
-~/Documents/project-abcd/.pi/mypi/agents/scout/scout.yml
+~/Documents/project-abcd/.pi/mypi/agents/scout.yml
 ~/Documents/project-abcd/subject/paper/
 ```
 
@@ -88,6 +82,8 @@ Capability-bearing lists are additive:
 - `workers`
 
 Do not redefine an existing preset to be more restrictive. If a user wants a smaller variant of `scout`, they should create `scout-lite` or another new preset name.
+
+Preset files are the only agent definition files. This avoids drift between YAML and adjacent `SYSTEM.md`, `APPEND_SYSTEM.md`, `skills/`, or `prompts/` directories.
 
 ## YAML Shape
 
@@ -152,15 +148,15 @@ Decision: prompt behavior is `prompt.base` plus optional append text.
 Defaults:
 
 - If no prompt fields or prompt files exist, `prompt.base` is `pi`.
-- If `SYSTEM.md` or `prompt.system` exists and `prompt.base` is omitted, `prompt.base` is `templated`.
-- If `prompt.base` is `raw`, `prompt.system` or `SYSTEM.md` is required.
+- If `prompt.system` exists and `prompt.base` is omitted, `prompt.base` is `templated`.
+- If `prompt.base` is `raw`, `prompt.system` is required.
 
-Same-layer duplicate prompt sources are invalid:
+Deprecated:
 
-- Do not define both YAML `prompt.system` and `SYSTEM.md` in the same preset source layer.
-- Do not define both YAML `prompt.append` and `APPEND_SYSTEM.md` in the same preset source layer.
+- `SYSTEM.md`
+- `APPEND_SYSTEM.md`
 
-Cross-layer override is allowed: a local YAML `prompt.system` may override a package `SYSTEM.md`.
+Prompt text belongs in the preset YAML. Long prompt resources that need standalone files should be modeled as prompt templates and referenced with `promptFiles` or `promptDirs`, not as preset-owned `SYSTEM.md` files.
 
 ## Tools And Extensions
 
@@ -247,24 +243,17 @@ The preset extension should use `resources_discover` to expose:
 - `skillPaths`
 - `promptPaths`
 
-Resources come from convention directories and additive YAML lists.
-
-For a directory-shaped preset:
-
-```text
-agents/<preset>/skills/
-agents/<preset>/prompts/
-```
-
-From YAML:
+Resources come from additive YAML lists:
 
 ```yaml
 skillDirs:
   - shared/skills/repo-map
+  - .pi/skills/my-project-skill
 promptFiles:
   - shared/prompts/repo-report.md
 promptDirs:
   - shared/prompts/code-review
+  - .pi/prompts
 ```
 
 Same-name prompt or skill resources follow normal precedence: more-local definitions win. Otherwise resources accumulate.
@@ -305,13 +294,14 @@ from the same cwd so user and project overlays apply to workers as well as the p
 - Chat personas become normal presets.
 - Workflow workers launch by preset name, not by `PI_CODING_AGENT_DIR=agents/<name>`.
 - The workflow orchestrator moves to `shared/extensions/workflow-orchestrator`.
+- Deprecate preset-owned `SYSTEM.md`, `APPEND_SYSTEM.md`, `skills/`, and `prompts/` directories.
 
 ## Current Code Conflicts
 
 - `extensions/agent-mode/agent-mode.ts` hardcodes modes, tools, prompt files, resources, and persona behavior.
 - `agents/workflow/extensions/workflow-orchestrator/index.ts` hardcodes worker directories under `agents/<name>` and launches child Pi with `PI_CODING_AGENT_DIR`.
 - `package.json` still loads `extensions/agent-mode/index.ts` and `agents/workflow/extensions/workflow-orchestrator/index.ts`.
-- Existing docs/spec drafts referenced central `agent-presets.yml`; target is now per-agent YAML under `agents/<preset>.yml` or `agents/<preset>/<preset>.yml` within source roots.
+- Existing docs/spec drafts referenced central `agent-presets.yml` and directory-shaped `agents/<preset>/<preset>.yml`; target is now one YAML file per preset at `agents/<preset>.yml` within source roots.
 
 ## Open Implementation Feedback
 
@@ -321,5 +311,5 @@ from the same cwd so user and project overlays apply to workers as well as the p
 
 ## Deferred
 
-Preset-local `agents/<preset>/extensions/` is out of scope because Pi does not currently discover extension paths via `resources_discover`.
+Preset-local `agents/<preset>/extensions/`, `agents/<preset>/skills/`, and `agents/<preset>/prompts/` are out of scope. Presets reference external resources instead of owning directories.
 
