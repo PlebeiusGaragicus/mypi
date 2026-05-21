@@ -2,6 +2,8 @@
 
 My personal `pi` extension package.
 
+> the computer is all you need
+
 It provides:
 
 1. a preset-based multi-agent workflow orchestrator with an example workflow library and workflow-builder skill

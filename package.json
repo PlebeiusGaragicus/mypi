@@ -24,10 +24,10 @@
   },
   "pi": {
     "extensions": [
+      "extensions/mypi-branding/index.ts",
       "extensions/preset/index.ts",
       "extensions/tools/workflow-orchestrator.ts",
-      "extensions/tools/questionnaire.ts",
-      "extensions/mypi-branding/index.ts"
+      "extensions/tools/questionnaire.ts"
     ],
     "skills": [],
     "prompts": [],
