@@ -28,6 +28,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Changed
 
+- MYPI session header shows only with an active preset (subtitle: `preset · project-dir`); removed `/flow-title` and `/flow-title-builtin`; header syncs from preset `activate`/`deactivate` via `syncFlowHeader`.
 - Consolidated PR review prompts into one merge-readiness prompt and updated the pull request template to match the workflow.
 - Moved agent prompt resources into `shared/prompts/`, tool extensions into `extensions/tools/`, and package bootstrap code into `extensions/preset/bootstrap.ts`.
 - Preset activation now applies configured model, thinking level, scoped environment overrides, and best-effort context-file exclusion.
@@ -36,6 +37,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Fixed
 
+- Fixed the MYPI session header so `pi --preset <name>` activates it without depending on shared in-memory preset state across extensions.
 - Fixed command argument completions for `/preset` and `/mypi-env-config` so accepting an inline completion does not crash the interactive editor.
 
 ### Removed

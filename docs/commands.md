@@ -23,8 +23,6 @@
 - `/stop-speaking`: stop speech.
 - `/tts-toggle`: toggle automatic TTS for the current session.
 - `/tts-wpm`: view or set `SAY_TTS_WPM`.
-- `/flow-title`: enable mypi title behavior.
-- `/flow-title-builtin`: restore built-in title behavior.
 
 ## Package Scripts
 

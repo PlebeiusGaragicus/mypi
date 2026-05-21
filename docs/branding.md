@@ -4,7 +4,8 @@ Branding is a package-level extension group under `extensions/mypi-branding`. It
 
 ## Responsibilities
 
-- Header/title/status presentation.
+- Session header (MYPI figlet) when a preset is active; subtitle shows `preset · project-dir`. Vanilla Pi (`/preset pi` or no preset) uses pi's built-in header.
+- Window title and status presentation.
 - Theme cycling helpers.
 - `/save` for saving the latest assistant reply.
 - `/say`, `/stop-speaking`, `/tts-toggle`, and `/tts-wpm` for local speech.
@@ -22,7 +23,7 @@ Users can edit it with `/tts-wpm` or `/mypi-env-config`.
 
 ## Preset Awareness
 
-Branding may read active preset state for display, but it is intentionally not gated by preset `extensions:`. Presets can select a theme by name; themes are installed at the package level.
+The MYPI session header is shown only while a mypi preset is active. Other branding (theme hotkey, TTS, run timer, and so on) stays available without preset opt-in. Presets can select a theme by name; themes are installed at the package level.
 
 ## Color Support
 

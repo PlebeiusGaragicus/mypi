@@ -10,6 +10,7 @@ import type {
 	ExtensionContext,
 	SessionEntry,
 } from "@earendil-works/pi-coding-agent";
+import { syncFlowHeader } from "../mypi-branding/flow-title";
 import { registerMypiEnvConfig } from "./config-command";
 import { setActivePresetState } from "../../shared/presets/state";
 import {
@@ -250,6 +251,17 @@ export default function presetExtension(pi: ExtensionAPI): void {
 		);
 	}
 
+	function activePresetState() {
+		return currentPreset
+			? {
+					name: currentPreset.name,
+					description: currentPreset.description,
+					extensions: currentPreset.extensions,
+					workers: currentPreset.workers,
+				}
+			: null;
+	}
+
 	function persistPresetState(preset: PresetDefinition | null): void {
 		pi.appendEntry(PRESET_CUSTOM_TYPE, { preset: preset?.name ?? null });
 	}
@@ -270,6 +282,7 @@ export default function presetExtension(pi: ExtensionAPI): void {
 		pi.setActiveTools(vanillaTools(pi.getAllTools().map((tool) => tool.name)));
 		persistPresetState(null);
 		updateStatus(ctx);
+		syncFlowHeader(ctx, null);
 		ctx.ui.notify("Preset off (vanilla pi)");
 	}
 
@@ -283,6 +296,7 @@ export default function presetExtension(pi: ExtensionAPI): void {
 		if (ctx.hasUI && preset.theme) ctx.ui.setTheme(preset.theme);
 		if (persist) persistPresetState(preset);
 		updateStatus(ctx);
+		syncFlowHeader(ctx, activePresetState());
 	}
 
 	pi.on("session_start", async (event, ctx) => {
@@ -293,8 +307,10 @@ export default function presetExtension(pi: ExtensionAPI): void {
 		setActivePresetState(null);
 
 		const cliPreset = normalizePresetName(pi.getFlag("preset"));
-		let restored = cliPreset ?? findLastSavedPreset(ctx.sessionManager.getEntries());
-		if (!restored) restored = findLastSavedPreset(ctx.sessionManager.getBranch());
+		let restored = cliPreset;
+		if (!restored && ev.reason === "reload") {
+			restored = findLastSavedPreset(ctx.sessionManager.getEntries());
+		}
 		if (!restored && ev.reason === "fork" && ev.previousSessionFile) {
 			restored = readLastPresetFromSessionFile(ev.previousSessionFile);
 			if (restored) pi.appendEntry(PRESET_CUSTOM_TYPE, { preset: restored });
@@ -319,6 +335,7 @@ export default function presetExtension(pi: ExtensionAPI): void {
 			pi.setActiveTools(vanillaTools(pi.getAllTools().map((tool) => tool.name)));
 		}
 		updateStatus(ctx);
+		syncFlowHeader(ctx, activePresetState());
 	});
 
 	pi.on("resources_discover", async () => {

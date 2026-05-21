@@ -3,6 +3,7 @@ import type {
 	ExtensionAPI,
 	ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import type { ActivePresetState } from "../../shared/presets/state";
 import { brandingFgRgb, brandingUseTruecolor } from "./branding-color-support";
 
 const RESET = "\x1b[0m";
@@ -15,15 +16,6 @@ const ICE: Rgb = [151, 205, 255];
 const PALETTE: Rgb[] = [DEEP_BLUE, BLUE, SKY, ICE, SKY, BLUE];
 
 type Rgb = [number, number, number];
-type Renderable = {
-  render(width: number): string[];
-  invalidate?: () => void;
-};
-type RenderableContainer = Renderable & { children: Renderable[] };
-type TuiLike = RenderableContainer & { requestRender(force?: boolean): void };
-
-const ANSI_PATTERN =
-  /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
 
 // Hand-drawn MYPI (ANSI-shadow style: █ ╔ ╗ ═ ║ ╚ ╝), six rows like the old FLOW banner.
 const TITLE_LINES = [
@@ -71,52 +63,12 @@ function center(text: string, width: number) {
   return `${" ".repeat(Math.floor((width - length) / 2))}${text}`;
 }
 
-function projectName() {
+function projectDirName() {
   return path.basename(process.cwd()) || "session";
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isRenderable(value: unknown): value is Renderable {
-  return isRecord(value) && typeof value.render === "function";
-}
-
-function isRenderableContainer(value: unknown): value is RenderableContainer {
-  return isRenderable(value) && Array.isArray(value.render);
-}
-
-function withoutAnsi(text: string) {
-  return text.replace(ANSI_PATTERN, "");
-}
-
-function renderedText(component: Renderable) {
-  try {
-    return withoutAnsi(component.render(120).join("\n"));
-  } catch {
-    return "";
-  }
-}
-
-function hasSectionHeader(text: string, header: string) {
-  return text.split("\n").some((line) => line.trim() === header);
-}
-
-function isHiddenStartupListing(component: Renderable) {
-  const text = renderedText(component);
-  const isThemesListing =
-    hasSectionHeader(text, "[Themes]") &&
-    (text.includes("/themes/") || text.includes(".pi/agent/themes"));
-  const isExtensionsListing =
-    hasSectionHeader(text, "[Extensions]") &&
-    (text.includes("/extensions/") || text.includes(".pi/agent/extensions"));
-
-  return isThemesListing || isExtensionsListing;
-}
-
-function isBlankSpacer(component: Renderable) {
-  return renderedText(component).trim() === "";
+function headerSubtitle(preset: ActivePresetState) {
+  return `${preset.name} · ${projectDirName()}`;
 }
 
 function renderHeader(width: number, phase: number, subtitleText: string) {
@@ -138,42 +90,28 @@ function renderHeader(width: number, phase: number, subtitleText: string) {
   ];
 }
 
-export function registerFlowTitle(pi: ExtensionAPI): void {
-  function installHeader(ctx: ExtensionContext) {
-    ctx.ui.setHeader((tui) => {
-      return {
-        render(width: number) {
-          return renderHeader(width, 0, projectName());
-        },
-        invalidate() {
-          tui.requestRender();
-        },
-      };
-    });
+export function syncFlowHeader(ctx: ExtensionContext, preset: ActivePresetState | null): void {
+  if (!ctx.hasUI) return;
+  if (!preset) {
+    ctx.ui.setHeader(undefined);
+    return;
   }
 
-  pi.on("session_start", (_event, ctx) => {
-    if (!ctx.hasUI) return;
-    installHeader(ctx);
+  const subtitle = headerSubtitle(preset);
+  ctx.ui.setHeader((tui) => {
+    return {
+      render(width: number) {
+        return renderHeader(width, 0, subtitle);
+      },
+      invalidate() {
+        tui.requestRender();
+      },
+    };
   });
+}
 
+export function registerFlowTitle(pi: ExtensionAPI): void {
   pi.on("session_shutdown", (_event, ctx) => {
     if (ctx.hasUI) ctx.ui.setHeader(undefined);
-  });
-
-  pi.registerCommand("flow-title", {
-    description: "Enable the MyPi block figlet session header (figlet -f block)",
-    handler: async (_args, ctx) => {
-      installHeader(ctx);
-      ctx.ui.notify("MyPi title enabled", "info");
-    },
-  });
-
-  pi.registerCommand("flow-title-builtin", {
-    description: "Restore pi's built-in header for this session",
-    handler: async (_args, ctx) => {
-      ctx.ui.setHeader(undefined);
-      ctx.ui.notify("Built-in header restored", "info");
-    },
   });
 }

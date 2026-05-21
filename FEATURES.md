@@ -100,7 +100,7 @@ Registered in `package.json` → `pi.extensions`:
 
 **Branding / convenience** (from `docs/branding.md` and `docs/commands.md`):
 
-- Header/window title, flow title (`/flow-title`, `/flow-title-builtin`).
+- Preset-gated MYPI session header (`preset · dir` subtitle); window title.
 - Theme hotkey: **Ctrl+Option+R** cycles package themes (skips built-in dark/light).
 - **Ctrl+Q**: full effective system prompt in a notification (debug).
 - Run timer, **TPS** in status bar, desktop/terminal **finish notifications** on agent end.
