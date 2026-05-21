@@ -1,16 +1,16 @@
 ---
 name: btc-price
-description: Fetch the current Bitcoin price. Use for BTC spot quotes and quick price checks.
+description: Use bash to fetch the current Bitcoin price. Use for BTC spot quotes and quick price checks.
 disable-model-invocation: false
 ---
 
 # Bitcoin Price
 
-This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`btc-price`** by basename only (do not call `python3` with paths into this skill).
+This skill is **path-promoted**: `btc-price` is a **shell command** on PATH, not a Pi tool. Run it with the **bash** tool: `btc-price` (do not call a tool named btc-price). Do not call `python3` with paths into this skill.
 
 The CLI uses CoinGecko’s public API. No authentication is required.
 
-## Commands
+## Commands (bash only)
 
 ```bash
 btc-price

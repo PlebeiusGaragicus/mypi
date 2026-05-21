@@ -1,6 +1,6 @@
 ---
 name: ntfy
-description: Send push notifications via ntfy using bare ntfy-send (default topic bot). Override with --topic when the user names another topic.
+description: Send push notifications via ntfy using bash and bare ntfy-send (default topic bot; override with --topic when the user names another topic.
 disable-model-invocation: false
 ---
 
@@ -9,6 +9,8 @@ disable-model-invocation: false
 Use when the user wants **push notifications** on phone or desktop via [ntfy](https://ntfy.sh/).
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`ntfy-send`** by basename with the message text. For a quick test, a single quoted string is enough.
+
+These commands are **bash** programs, not Pi tools. Use the **bash** tool with the basename only.
 
 ## Default topic (`bot`)
 

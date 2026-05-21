@@ -1,12 +1,14 @@
 ---
 name: exa-search
-description: Search and retrieve web content with Exa's AI-oriented search API. Use for live web research, source discovery, similar-page discovery, and token-efficient page excerpts.
+description: Search and retrieve web content with Exa via bash using bare exa-search, exa-contents, and exa-similar. Use for live web research, source discovery, similar-page discovery, and token-efficient page excerpts.
 disable-model-invocation: false
 ---
 
 # Exa CLI
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`exa-search`**, **`exa-contents`**, and **`exa-similar`** by basename only (do not call `node` with paths into this skill).
+
+These commands are **bash** programs, not Pi tools. Use the **bash** tool with the basename only.
 
 The scripts are intentionally verbose on failure: missing keys, unknown options, missing option values, and Exa HTTP errors print a specific `Error:` line to stderr and exit nonzero.
 

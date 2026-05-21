@@ -1,12 +1,14 @@
 ---
 name: congress-search
-description: Search and fetch U.S. Congress legislation via the Congress.gov API v3 using congress-search, congress-fetch, and congress-api. Use for bills, laws, amendments, members, votes, CRS summaries, and congress.gov legislative research.
+description: Search and fetch U.S. Congress legislation via bash using congress-search, congress-fetch, and congress-api. Use for bills, laws, amendments, members, votes, CRS summaries, and congress.gov legislative research.
 disable-model-invocation: false
 ---
 
 # Congress.gov API CLI
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`congress-search`**, **`congress-fetch`**, and **`congress-api`** by basename only (do not call `python3` with paths into this skill).
+
+These commands are **bash** programs, not Pi tools. Use the **bash** tool with the basename only.
 
 Scripts use only the Python standard library. They print readable text by default, support `--json` where useful, and print specific `Error:` lines to stderr on failure.
 

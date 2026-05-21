@@ -1,12 +1,14 @@
 ---
 name: arxiv-search
-description: Search and fetch arXiv papers using bare arxiv-search and arxiv-fetch (path-promoted). Use for academic paper discovery, arXiv paper lookup, and reading arXiv HTML papers for synthesis or review.
+description: Search and fetch arXiv papers via bash using bare arxiv-search and arxiv-fetch (path-promoted). Use for academic paper discovery, arXiv paper lookup, and reading arXiv HTML papers for synthesis or review.
 disable-model-invocation: false
 ---
 
 # arXiv CLI
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`arxiv-search`** and **`arxiv-fetch`** by basename only (do not call `python3` with paths into this skill).
+
+These commands are **bash** programs, not Pi tools. Use the **bash** tool with the basename only.
 
 The scripts use only standard Python plus `pandoc` for HTML-to-text conversion. They print readable text by default, support `--json` where useful, and print specific `Error:` lines to stderr on failure.
 

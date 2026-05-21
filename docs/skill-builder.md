@@ -29,7 +29,7 @@ Do not include secret setup instructions that duplicate script errors. Scripts t
 
 Commands that should be callable by basename are listed in `scripts/path-promoted-skills.txt`. Pi sessions and `scripts/bootstrap.sh` both use that registry to prepend skill `scripts/` directories to `PATH`.
 
-When a skill is path-promoted, say so in `SKILL.md` and tell agents to use the basename, not a path into the repo.
+When a skill is path-promoted, say so in `SKILL.md` and tell agents to use the basename, not a path into the repo. For path-promoted CLIs, state explicitly that agents must run commands with the **bash** tool; the skill name is not a Pi tool.
 
 ## Runtime Env
 
@@ -38,6 +38,7 @@ Skills may depend on `~/.pi/mypi/mypi.env`, provider auth stores, or ordinary sh
 ## Review Checklist
 
 - The description is short and helps the agent decide whether to load the skill.
+- Path-promoted skills say commands run via bash, not as a tool named after the skill.
 - The body contains concrete usage instructions.
 - Commands fail informatively before making network calls when required runtime values are missing.
 - The skill avoids generated state, logs, caches, and credentials in the skill tree.

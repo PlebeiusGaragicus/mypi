@@ -1,12 +1,14 @@
 ---
 name: tavily-search
-description: Search and extract live web content with Tavily using scripts. Use for current web research, source discovery, news, vendor docs, and citation-backed synthesis.
+description: Search and extract live web content with Tavily via bash using tavily-search and tavily-extract. Use for current web research, source discovery, news, vendor docs, and citation-backed synthesis.
 disable-model-invocation: false
 ---
 
 # Tavily CLI
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Run **`tavily-search`** and **`tavily-extract`** by basename only (do not call `node` with paths into this skill).
+
+These commands are **bash** programs, not Pi tools. Use the **bash** tool with the basename only.
 
 The scripts are intentionally verbose on failure: missing keys, unknown options, missing option values, rate limits, plan limits, and Tavily HTTP errors print a specific `Error:` line to stderr and exit nonzero.
 

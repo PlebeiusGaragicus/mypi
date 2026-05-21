@@ -1,12 +1,14 @@
 ---
 name: todo
-description: Use bash for the `todo` utility for shred task lists management with the user.
+description: Use bash for the bare todo utility for shared task list management with the user.
 disable-model-invocation: true
 ---
 
 # Todo CLI
 
 This skill is **path-promoted**: in Pi agent sessions this skill’s `scripts/` directory is on your **PATH**. Use the bare command **`todo`** (not a path into this skill folder).
+
+These commands are **bash** programs, not Pi tools. Use the **bash** tool with the basename only.
 
 `todo` is a simple cli utility used to manage shared todo lists with the user.  Todo lists are project-scoped `todo.jsonl` files not meant to be viewed or edited except via the `todo` utility.
 

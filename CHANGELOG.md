@@ -28,6 +28,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Changed
 
+- Web preset and path-promoted skill docs now state that skill CLIs run via bash, not as Pi tools named after the skill.
 - MYPI session header shows only with an active preset (subtitle: `preset · project-dir`); removed `/flow-title` and `/flow-title-builtin`; header syncs from preset `activate`/`deactivate` via `syncFlowHeader`.
 - Consolidated PR review prompts into one merge-readiness prompt and updated the pull request template to match the workflow.
 - Moved agent prompt resources into `shared/prompts/`, tool extensions into `extensions/tools/`, and package bootstrap code into `extensions/preset/bootstrap.ts`.
