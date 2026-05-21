@@ -34,3 +34,13 @@ For development, run `git clone` and install from the directory:
 
 ## What I've added to `pi` for my personal use
 
+**the pitch**
+
+1. agent presets
+1. differentiated UI
+1. multi-agent workflows
+
+Agent presets are used as subagents by a multi-agent system which follows custom user-defined workflows to accomplish computer work tasks.  A differentiated UI adds features and helps ease-of-use
+
+---
+
