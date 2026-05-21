@@ -18,6 +18,9 @@ includeTools:
   - edit
   - bash
 
+extensions:
+  - questionnaire
+
 promptDirs:
   - shared/prompts/code
 promptFiles:

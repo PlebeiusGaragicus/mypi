@@ -14,6 +14,7 @@
   "scripts": {
     "postinstall": "bash scripts/hello-world.sh",
     "presets:check": "node scripts/check-presets.mjs",
+    "presets:debug-system-prompts": "bash scripts/debug-system-prompt.sh",
     "presets:test": "node scripts/test-presets.mjs",
     "runtime-env:test": "node scripts/test-runtime-env.mjs",
     "browser:install": "cd utilities/browser-runtime && bun install",

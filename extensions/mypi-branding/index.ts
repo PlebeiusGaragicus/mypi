@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { registerDebugSystemPrompt } from "./debug-system-prompt";
 import { registerFlowTitle } from "./flow-title";
 import { registerRainbowEditor } from "./rainbow-editor";
 import registerRunFinishNotify from "./run-finish-notify";
@@ -9,6 +9,8 @@ import registerSay from "./say";
 import { registerSystemView } from "./system-view";
 import { registerThemeCycler } from "./theme-cycler";
 import { registerWindowTitle } from "./title";
+
+type ExtensionAPI = Parameters<typeof registerFlowTitle>[0];
 
 /**
  * MyPi bundled UI extensions (header, editor, window title, run timer, TPS, finish notify, /save, TTS, system prompt debug, theme hotkey).
@@ -25,4 +27,5 @@ export default function mypiExtensions(pi: ExtensionAPI): void {
   registerSay(pi);
   registerSystemView(pi);
   registerThemeCycler(pi);
+  registerDebugSystemPrompt(pi);
 }

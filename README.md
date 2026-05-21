@@ -32,3 +32,5 @@ For development, run `git clone` and install from the directory:
 1. `cd mypi`
 1. `pi install .`
 
+## What I've added to `pi` for my personal use
+

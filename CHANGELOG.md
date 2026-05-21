@@ -16,6 +16,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Added
 
+- Added `--debug-system-prompt` for printing the effective preset system prompt before a model call.
 - Added path-promoted `btc-price` CLI for the btc-price skill (CoinGecko spot quotes).
 - Started tracking notable project changes in a root changelog.
 - Added a documented development workflow and lifecycle prompt set for issue/spec, planning, implementation, wrapping, PR review, changelog audit, and release preparation.
