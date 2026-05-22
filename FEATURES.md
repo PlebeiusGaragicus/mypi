@@ -102,7 +102,7 @@ Registered in `package.json` → `pi.extensions`:
 
 - Preset-gated MYPI session header (`preset · dir` subtitle); window title.
 - Theme hotkey: **Ctrl+Option+R** cycles package themes (skips built-in dark/light).
-- **Ctrl+Q**: full effective system prompt in a notification (debug).
+- **`/debug-system-prompt`** / **Ctrl+Q**: full effective system prompt in a notification (debug; requires at least one user or assistant message on the branch).
 - Run timer, **TPS** in status bar, desktop/terminal **finish notifications** on agent end.
 - `/save` — save latest assistant reply.
 - **TTS**: `/say`, `/stop-speaking`, `/tts-toggle`, `/tts-wpm` (speed in `mypi.env` as `SAY_TTS_WPM`).

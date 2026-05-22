@@ -26,6 +26,8 @@ type DebugSystemPromptEvent = {
 	systemPrompt: string;
 };
 
+/** In-session UI: `/debug-system-prompt` and Ctrl+Q — see `system-view.ts`. */
+
 export function registerDebugSystemPrompt(pi: ExtensionAPI): void {
 	pi.registerFlag("debug-system-prompt", {
 		type: "boolean",
