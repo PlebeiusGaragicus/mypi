@@ -16,7 +16,9 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { activePresetHasExtension, getActivePresetState } from "../../shared/presets/state";
 
-const MAX_PARALLEL_TASKS = 100;
+// LM Studio serves at most 4 concurrent requests; more workers would idle in
+// its queue while holding open processes and connections (docs/proposals.md P2).
+const MAX_PARALLEL_TASKS = 4;
 const SUBAGENT_TRACES_CUSTOM_TYPE = "mypi.subagent-traces";
 
 type InvocationMode = "single" | "parallel" | "chain";

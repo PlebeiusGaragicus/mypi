@@ -1,46 +1,34 @@
-Several reference repos are cloned locally and .gitignore'd - they are for reference only.  Review .gitignore for the definitive list.  NEVER modify them.
+Several reference repos are cloned locally and .gitignore'd — they are for reference only. Review .gitignore for the definitive list. NEVER modify them.
+
+## Docs
+
+`docs/` is an MkDocs site (`mkdocs.yml` at the root, deployed to GitHub Pages by `.github/workflows/docs.yml`). When a change affects behavior, commands, presets, skills, or workflows, update the matching page in `docs/`. Design changes under consideration go in `docs/proposals.md`, not into code.
 
 ## Development process
 
-Use issues, pull requests, changelog entries, and review notes as the durable record of why the repository changed.
+Issues, pull requests, and changelog entries are the durable record of why the repository changed. Prefer opening or linking a GitHub issue before non-trivial work; every PR should include a summary, linked issue or rationale, test plan, and changelog note. Keep commits and PRs small and reviewable. The full issue-to-release workflow (and its prompt templates under `shared/prompts/code/`) is documented in [docs/development-process.md](docs/development-process.md).
 
-- Prefer opening or linking a GitHub issue before non-trivial work. Small typo fixes, mechanical maintenance, and emergency follow-ups may skip an issue, but the PR should say why.
-- Every pull request should include a summary, linked issue or rationale, test plan, and changelog note.
-- Treat AI review as advisory: it can find risks and process gaps, but humans decide whether to merge.
-- Do not use AI review as the only quality gate. Prefer automated checks for deterministic concerns such as tests, builds, formatting, generated files, and policy checks.
-- Keep commits and PRs reviewable. Split unrelated changes instead of bundling process, refactor, and product behavior into one large change.
+## Changelog
 
-## Changelog and versioning
+Root `CHANGELOG.md` is the source of truth for user- and operator-visible changes.
 
-The root `CHANGELOG.md` is the source of truth for user-visible and operator-visible changes.
-
-- Maintain an `## [Unreleased]` section with these subsections, in order: `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, `### Removed`, `### Security`.
-- Add a changelog entry for changes that affect behavior, commands, configuration, workflows, docs users rely on, prompts, skills, extensions, packaging, or release process.
-- Skip changelog entries for purely internal refactors, typo-only edits, test-only changes, generated output, and release housekeeping unless they affect users or operators.
-- Write entries in plain language from the user's point of view. Mention the issue or PR when available, for example: `Added browser runtime smoke checks ([#12](https://github.com/owner/repo/pull/12)).`
-- Put incompatible behavior, migration requirements, removed commands, renamed config keys, and changed public interfaces under `### Breaking Changes`, even if they also fix a bug.
-- Version bumps happen during release preparation. Move completed `Unreleased` entries into a dated version section and update `VERSION` and package manifests together when applicable.
+- Maintain `## [Unreleased]` with subsections in this order: `### Breaking Changes`, `### Added`, `### Changed`, `### Fixed`, `### Removed`, `### Security`.
+- Add an entry for changes to behavior, commands, configuration, workflows, prompts, skills, extensions, packaging, or docs users rely on. Skip purely internal refactors, typo fixes, and test-only changes.
+- Write entries in plain language from the user's point of view; put incompatible behavior under `### Breaking Changes` even if it also fixes a bug.
+- Version bumps happen only during release preparation.
 
 ## Session PATH bootstrap (skill scripts)
 
-Pi does not run an interactive shell for the agent **bash** tool; each command is a new process. To expose pick-and-choose skill utilities (e.g. bare `todo`) without full paths or `source` on every command:
+Pi does not run an interactive shell for the bash tool; each command is a new process. Skill CLIs are exposed by basename via PATH promotion: add the skill's folder name to `scripts/path-promoted-skills.txt`, and note in its `SKILL.md` that agents should use bare commands (via the bash tool), not paths into the repo. `extensions/preset/bootstrap.ts` applies the promotion for Pi sessions; `source scripts/bootstrap.sh` does the same for dev shells. Details: [docs/runtime.md](docs/runtime.md).
 
-- **`scripts/path-promoted-skills.txt`** — One **skill folder name** per line under `shared/skills/<name>/` (comments `#` and blank lines allowed). Each promoted skill’s `scripts/` directory is prepended to `PATH` for agents and for humans who `source scripts/bootstrap.sh`. **Later lines win** if order matters for PATH precedence.
-- **`extensions/preset/bootstrap.ts`** — On extension load (via `extensions/preset/index.ts`), reads `path-promoted-skills.txt` and prepends those dirs to `process.env.PATH` (idempotent). Child shells inherit this via pi’s `getShellEnv()`.
-- **`scripts/bootstrap.sh`** — For normal shells outside pi (e.g. local dev): `source scripts/bootstrap.sh` from repo root reads the same file and prepends the same dirs to `PATH`.
+## Node and module conventions
 
-When a skill’s scripts should be invocable by **basename**, add its folder name to **`scripts/path-promoted-skills.txt`** and note in that skill’s **`SKILL.md`** that its `scripts/` dir is on `PATH` (so the agent uses bare commands, not `node …/scripts/…` paths).
+Root `package.json` sets `"type": "module"`, so extensionless or `.js` CLIs under `shared/skills/*/scripts/` resolve as ESM with no per-skill manifest. Treat `shared/skills/*/scripts/` as the only place new `.js` files should grow; if you ever add CommonJS elsewhere, use an explicit `.cjs` extension or a separate `package.json` boundary.
 
-## Root `package.json` and Node in skill `scripts/`
+## Runtime env
 
-The repo root **`package.json`** sets **`"type": "module"`** so Node resolves extensionless (or `.js`) CLIs under **`shared/skills/*/scripts/`** as **ESM** when it walks up to this manifest—no per-skill `package.json` needed, and no `MODULE_TYPELESS_PACKAGE_JSON` noise for extensionless shebang scripts like `ntfy-send`.
+mypi-owned runtime values (API keys, service URLs, TTS WPM) live in `~/.pi/mypi/mypi.env` (override: `MYPI_ENV_FILE`) — the only mypi user config file, edited with `/mypi-env-config`. Pi's LLM credentials stay in `~/.pi/agent/auth.json`. Details: [docs/runtime.md](docs/runtime.md).
 
-**Convention:** treat **`shared/skills/*/scripts/`** as the only place this package is expected to grow new **`.js`** files. The rest of the package is primarily **TypeScript** extensions plus shell helpers; if you ever add CommonJS elsewhere, use an explicit **`.cjs`** extension or a separate `package.json` boundary so it does not inherit root `"type": "module"`.
+## Validation
 
-## Runtime env (`~/.pi/mypi/mypi.env`)
-
-mypi-owned runtime values (API keys, service URLs, TTS WPM) live in **`~/.pi/mypi/mypi.env`** (override: **`MYPI_ENV_FILE`**). This is intentionally the only mypi user config file. See [`mypi.env.example`](mypi.env.example) and [`shared/runtime-env/README.md`](shared/runtime-env/README.md). Pi’s LLM credentials remain in `~/.pi/agent/auth.json`.
-
-- **`extensions/preset/bootstrap.ts`** — On extension load, merges non-empty runtime env keys into `process.env` for unset keys only.
-- **`/mypi-env-config`** — Views and edits `mypi.env` (`SAY_TTS_WPM` default 300; API/URL keys default `""`).
-- **`scripts/bootstrap.sh`** — After PATH promotion, runs `shared/runtime-env/apply-shell-env.mjs` so dev shells get the same non-empty env exports.
+Run `npm run presets:check` and `npm run presets:test` after touching `agents/*.yml` or `shared/presets/`; `npm run runtime-env:test` after touching `shared/runtime-env/`. Regenerate the system-prompt dumps with `npm run presets:debug-system-prompts` after changing preset YAML or shared prompts.

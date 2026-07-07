@@ -26,9 +26,15 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 - Added `mypi.env.example` as the single mypi runtime settings template.
 - Added `/mypi-env-config` for viewing and editing `mypi.env`.
 - Added docs for presets, custom preset overlays, runtime env, commands, bootstrap, validation, and workflow prompt usage.
+- Added `docs/proposals.md` documenting design changes under consideration: an on-disk workflow instruction pointer, chain `{previous}` truncation, a strict mode for the preset YAML parser, prompt context-budget trims, and parallel-cap configurability.
 
 ### Changed
 
+- Capped `subagent` parallel mode at 4 concurrent workers (was 100) to match LM Studio's request concurrency; larger fan-outs batch across successive calls (see docs/proposals.md P2).
+- Consolidated the 16 files under `docs/` into a 9-page MkDocs site (`mkdocs.yml`, Material theme) deployed to GitHub Pages on push to `main` (`.github/workflows/docs.yml`); merged presets/agent-presets/custom-presets/preset-catalog into `presets.md`, the three workflow docs into `workflows.md`, skill-builder into `skills.md`, and runtime-env/bootstrap/commands/validation into `runtime.md`.
+- Moved `FEATURES.md` into the docs site as `docs/features.md`; rewrote it as a concise feature summary.
+- Rewrote `README.md` (fixed the truncated sentence, moved terminal color-depth details into `docs/branding.md`) and slimmed `AGENTS.md` to agent-facing conventions that link to the docs site for process detail.
+- Removed the `postinstall` hello-world placeholder script.
 - Web preset and path-promoted skill docs now state that skill CLIs run via bash, not as Pi tools named after the skill.
 - MYPI session header shows only with an active preset (subtitle: `preset · project-dir`); removed `/flow-title` and `/flow-title-builtin`; header syncs from preset `activate`/`deactivate` via `syncFlowHeader`.
 - Consolidated PR review prompts into one merge-readiness prompt and updated the pull request template to match the workflow.

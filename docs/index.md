@@ -1,29 +1,54 @@
-# mypi Documentation
+# mypi
 
-This directory is the living spec for the current mypi package. It describes how presets, tools, skills, prompts, runtime environment, workflows, and UI extensions work today.
+My personal `pi` extension package.
 
-## User And Operator Guides
+> the computer is all you need
 
-- [Presets](presets.md): selecting presets with `/preset` and `pi --preset`, clean-session rules, and runtime behavior.
-- [Preset Catalog](preset-catalog.md): shipped presets and their intended use.
-- [Custom Presets](custom-presets.md): user/project overlays and merge rules.
-- [Runtime Env](runtime-env.md): `~/.pi/mypi/mypi.env`, `/mypi-env-config`, and shell bootstrap.
-- [Commands](commands.md): slash commands and package npm scripts.
-- [Workflow Library](workflow-library.md): workflow prompt catalog and invocation examples.
-- [Bootstrap](bootstrap.md): PATH promotion, `$B`, and dev-shell setup.
-- [Validation](validation.md): checks that keep presets and runtime env healthy.
+mypi layers three things on top of a vanilla Pi install, without replacing it:
 
-## Feature Specs
+1. **Agent presets** — named agent profiles (`agents/*.yml`) with differentiated prompts, tools, skills, model preferences, and themes. Switch with `/preset`.
+2. **Multi-agent workflows** — a `workflow` preset that interprets natural-language workflow programs (markdown files) and delegates bounded tasks to worker presets through the `subagent` tool.
+3. **A personal skills library and UI polish** — path-promoted skill CLIs (search providers, ntfy, todo, browser control) plus branding, TTS, and quality-of-life extensions.
 
-- [Agent Presets](agent-presets.md): YAML schema, prompt composition, tool activation, resource discovery, and overlay semantics.
-- [Workflow Orchestrator](workflow-orchestrator.md): `subagent`, worker presets, trace behavior, and workflow preset rules.
-- [Workflow Builder](workflow-builder.md): conventions for authoring workflow prompts.
-- [Skill Builder](skill-builder.md): conventions for creating and reviewing Pi skills.
-- [Browser Control](browser-control.md): browser automation runtime, `$B`, and safety requirements.
-- [Branding](branding.md): global UI and quality-of-life extensions.
-- [Development Process](development-process.md): durable issue/PR/changelog/review process.
+Everything is designed to run against **open-source models on limited local inference infrastructure** (an LM Studio / Ollama homelab). That constraint shapes the architecture: workers run as fresh processes with clean contexts, capability boundaries are structural (a tool-less preset *cannot* touch files, regardless of what the model tries), and workflow prompts favor file handoffs over long in-context state.
+
+## Install
+
+```sh
+pi install https://github.com/PlebeiusGaragicus/mypi.git
+```
+
+For local development:
+
+```sh
+git clone https://github.com/PlebeiusGaragicus/mypi
+cd mypi
+pi install .
+```
+
+Runtime settings (API keys, ntfy, TTS speed) live in `~/.pi/mypi/mypi.env` — see [Runtime & Commands](runtime.md).
+
+## Quick Start
+
+```text
+/preset            # pick a preset from a menu
+/preset code       # activate the coding preset
+/preset pi         # back to vanilla Pi
+
+/new               # workflows want a clean session
+/preset workflow
+/deepresearch <topic>
+```
+
+## Where To Go
+
+- [Features](features.md) — the short pitch and feature summary.
+- [Presets](presets.md) — the catalog, the YAML schema, overlays, and merge semantics.
+- [Workflows](workflows.md) — the orchestrator, the `subagent` tool, the workflow library, and authoring conventions.
+- [Skills](skills.md) — the skill inventory and conventions for building new ones.
+- [Runtime & Commands](runtime.md) — `mypi.env`, PATH bootstrap, slash commands, and validation scripts.
+- [Proposals](proposals.md) — design changes under consideration, not yet implemented.
 
 ## Runtime State
 
-mypi-owned runtime values live in `~/.pi/mypi/mypi.env`. Pi model credentials remain in Pi's own auth store, not in mypi docs or config.
-
+mypi-owned runtime values live in `~/.pi/mypi/mypi.env`. Pi model credentials remain in Pi's own auth store (`~/.pi/agent/auth.json`), never in mypi config or docs.

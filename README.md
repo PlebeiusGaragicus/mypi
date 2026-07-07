@@ -10,13 +10,11 @@ It provides:
 1. agent presets with differentiated prompts, tools, skills, themes, and extension-provided tools
 1. my personal skills library
 1. scripts for controlling a self-hosted LM Studio or Ollama homelab
-1. leaves your "vanilla" `pi` installation alone if a 
+1. leaves your "vanilla" `pi` installation alone — `/preset pi` returns to stock behavior at any time
 
-See [FEATURES.md](./FEATURES.md) to see what features this `pi` package adds.
+**Documentation:** [plebeiusgaragicus.github.io/mypi](https://plebeiusgaragicus.github.io/mypi/) — built with MkDocs from [`docs/`](docs/). Start with the [feature summary](docs/features.md).
 
-See [`docs/`](docs/) for the current package specs and operator guides.
-
-# Install and Run
+## Install and Run
 
 Install as a Pi package:
 
@@ -24,14 +22,16 @@ Install as a Pi package:
 pi install https://github.com/PlebeiusGaragicus/mypi.git
 ```
 
-Runtime settings (API keys, ntfy, TTS speed) are stored in **`~/.pi/mypi/mypi.env`**. The file is created from [`mypi.env.example`](mypi.env.example) on first runtime-env use and can be edited with `/mypi-env-config`. See [`shared/runtime-env/README.md`](shared/runtime-env/README.md).
-
-Session header branding: **256-color** on **Intel Mac + Terminal.app** only (`darwin`, `x64`, Terminal session). **Apple Silicon macOS** always uses **truecolor** for branding (Node often reports low `getColorDepth()` in Terminal.app; we do not downgrade). On **other** systems, truecolor is used when `getColorDepth() >= 24`, else 256. Overrides: `MYPI_BRANDING_TRUECOLOR=0` forces 256, `=1` forces 24-bit.
+Then switch presets with `/preset`. Runtime settings (API keys, ntfy, TTS speed) live in `~/.pi/mypi/mypi.env`, edited with `/mypi-env-config` — see [Runtime & Commands](docs/runtime.md).
 
 ## Local Development
 
-For development, run `git clone` and install from the directory:
+```sh
+git clone https://github.com/PlebeiusGaragicus/mypi
+cd mypi
+pi install .
+```
 
-1. `git clone https://github.com/PlebeiusGaragicus/mypi`
-1. `cd mypi`
-1. `pi install .`
+Validation: `npm run presets:check`, `npm run presets:test`, `npm run runtime-env:test`. Docs preview: `pip install mkdocs-material && mkdocs serve`.
+
+See [AGENTS.md](AGENTS.md) for repo conventions and [Development Process](docs/development-process.md) for the issue-to-release workflow.

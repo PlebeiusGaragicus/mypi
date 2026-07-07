@@ -12,7 +12,6 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "postinstall": "bash scripts/hello-world.sh",
     "presets:check": "node scripts/check-presets.mjs",
     "presets:debug-system-prompts": "bash scripts/debug-system-prompt.sh",
     "presets:test": "node scripts/test-presets.mjs",

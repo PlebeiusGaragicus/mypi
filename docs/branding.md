@@ -27,4 +27,10 @@ The MYPI session header is shown only while a mypi preset is active. Other brand
 
 ## Color Support
 
-`extensions/mypi-branding/branding-color-support.ts` handles terminal color-depth differences, including conservative behavior for older macOS Terminal combinations.
+`extensions/mypi-branding/branding-color-support.ts` handles terminal color-depth differences for the session header:
+
+- **Intel Mac + Terminal.app** (`darwin`, `x64`, Terminal session): 256-color only.
+- **Apple Silicon macOS**: always truecolor (Node often reports a low `getColorDepth()` in Terminal.app; mypi does not downgrade).
+- **Other systems**: truecolor when `getColorDepth() >= 24`, else 256-color.
+
+Overrides: `MYPI_BRANDING_TRUECOLOR=0` forces 256-color, `=1` forces 24-bit.

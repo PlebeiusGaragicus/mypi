@@ -1,5 +1,6 @@
 .DS_Store
 node_modules
+site/
 package-lock.json
 __pycache__
 debug/
@@ -15,3 +16,5 @@ my-pi-setup
 .browser-control
 utilities/browser-runtime/node_modules
 utilities/browser-runtime/dist
+
+EXAMPLE/
