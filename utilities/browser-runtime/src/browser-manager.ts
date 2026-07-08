@@ -93,6 +93,10 @@ export class BrowserManager {
 
   // ─── Headed State ────────────────────────────────────────
   private connectionMode: 'launched' | 'headed' = 'launched';
+  // Our crash-exit listener on browser 'disconnected'. Tracked so close() can
+  // remove just this listener — removeAllListeners('disconnected') would also
+  // strip Playwright's internal one, making browser.close() hang forever.
+  private crashHandler: (() => void) | null = null;
   private intentionalDisconnect = false;
 
   // Called when the headed browser disconnects without intentional teardown
@@ -198,11 +202,12 @@ export class BrowserManager {
     });
 
     // Chromium crash → exit with clear message
-    this.browser.on('disconnected', () => {
+    this.crashHandler = () => {
       console.error('[browse] FATAL: Chromium process crashed or was killed. Server exiting.');
       console.error('[browse] Console/network logs flushed to .gstack/browse-*.log');
       process.exit(1);
-    });
+    };
+    this.browser.on('disconnected', this.crashHandler);
 
     const contextOptions: BrowserContextOptions = {
       viewport: { width: this.currentViewport.width, height: this.currentViewport.height },
@@ -441,7 +446,7 @@ export class BrowserManager {
     // direct process.exit(2) if no callback is wired up, or if the callback
     // throws/rejects — never leave the process running with a dead browser.
     if (this.browser) {
-      this.browser.on('disconnected', () => {
+      this.crashHandler = () => {
         if (this.intentionalDisconnect) return;
         console.error('[browse] Real browser disconnected (user closed or crashed).');
         console.error('[browse] Run `$B connect` to reconnect.');
@@ -461,7 +466,8 @@ export class BrowserManager {
           console.error('[browse] onDisconnect threw:', err);
           process.exit(2);
         }
-      });
+      };
+      this.browser.on('disconnected', this.crashHandler);
     }
 
     // Headed mode defaults
@@ -485,14 +491,14 @@ export class BrowserManager {
       if (this.connectionMode === 'headed') {
         // Headed/persistent context mode: close the context (which closes the browser)
         this.intentionalDisconnect = true;
-        if (this.browser) this.browser.removeAllListeners('disconnected');
+        if (this.browser && this.crashHandler) this.browser.off('disconnected', this.crashHandler);
         await Promise.race([
           this.context ? this.context.close() : Promise.resolve(),
           new Promise(resolve => setTimeout(resolve, 5000)),
         ]).catch(() => {});
       } else {
         // Launched mode: close the browser we spawned
-        this.browser.removeAllListeners('disconnected');
+        if (this.crashHandler) this.browser.off('disconnected', this.crashHandler);
         await Promise.race([
           this.browser.close(),
           new Promise(resolve => setTimeout(resolve, 5000)),
@@ -555,6 +561,9 @@ export class BrowserManager {
     const tabId = id ?? this.activeTabId;
     const page = this.pages.get(tabId);
     if (!page) throw new Error(`Tab ${tabId} not found`);
+    // Capture before close: the page 'close' event handler fires during
+    // page.close() and mutates activeTabId, so comparing afterwards is racy.
+    const wasActive = tabId === this.activeTabId;
 
     await page.close();
     this.pages.delete(tabId);
@@ -562,10 +571,12 @@ export class BrowserManager {
     this.tabOwnership.delete(tabId);
 
     // Switch to another tab if we closed the active one
-    if (tabId === this.activeTabId) {
+    if (wasActive) {
       const remaining = [...this.pages.keys()];
       if (remaining.length > 0) {
-        this.activeTabId = remaining[remaining.length - 1];
+        if (!this.pages.has(this.activeTabId)) {
+          this.activeTabId = remaining[remaining.length - 1];
+        }
       } else {
         // No tabs left — create a new blank one
         await this.newTab();
@@ -1131,6 +1142,7 @@ export class BrowserManager {
     try {
       // Swap to new browser/context before restoreState (it uses this.context)
       const oldBrowser = this.browser;
+      const oldCrashHandler = this.crashHandler;
 
       this.context = newContext;
       this.browser = newContext.browser();
@@ -1144,11 +1156,12 @@ export class BrowserManager {
 
       // Register crash handler on new browser
       if (this.browser) {
-        this.browser.on('disconnected', () => {
+        this.crashHandler = () => {
           if (this.intentionalDisconnect) return;
           console.error('[browse] FATAL: Chromium process crashed or was killed. Server exiting.');
           process.exit(1);
-        });
+        };
+        this.browser.on('disconnected', this.crashHandler);
       }
 
       await this.restoreState(state);
@@ -1156,7 +1169,7 @@ export class BrowserManager {
       this.dialogAutoAccept = false;  // User controls dialogs in headed mode
 
       // 4. Close old headless browser (fire-and-forget)
-      oldBrowser.removeAllListeners('disconnected');
+      if (oldCrashHandler) oldBrowser.off('disconnected', oldCrashHandler);
       oldBrowser.close().catch(() => {});
 
       this.notifyEnterHeadedMode();
