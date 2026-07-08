@@ -101,7 +101,7 @@ The split is the better first move: it helps every repo consumer of AGENTS.md, n
 
 ### Phase 4 — Workflow bench: iterate workflow programs against real tasks
 
-**Status: proposed, awaiting approval.**
+**Status: implemented** (`bench workflow` / `bench feedback` / `bench clean`; auto-retro deliberately deferred — the run prints a ready-made `bench retro` command for its trace instead). Kept here only until the deferred auto-retro decision is settled; details live in [evals/README.md](https://github.com/PlebeiusGaragicus/mypi/blob/main/evals/README.md).
 
 Workflow prompts are natural-language programs, and the highest-leverage eval axis is the *program text*, not the model — models mostly follow instructions; the wording decides whether the workflow succeeds. Phase 4 makes single-task workflow iteration a one-command loop with a human verdict attached.
 

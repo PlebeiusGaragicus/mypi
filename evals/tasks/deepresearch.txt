@@ -1,0 +1,57 @@
+# Oregon
+Lookup how many voters are registered in the state of Oregon and under which party they are registered.
+If I lived in Oregon and had children, how would I register them for homeschool?  How does "homeschooling" work in Oregon? What are the steps a parent needs to take?
+Explain the budget for the state of Oregon for 2026.
+Explain the budget issues with the City of Portland.
+
+# War / Geopoligical Conflict
+Provide an update on the Iran war with a focus on maritime traffic through the Straight of Hormuz
+Provide an update on the war with Ukraine and Russia with a focus on grey-zone conflict and the neighboring geopolitics
+
+# Open Source
+Recent open-source AI model releases - focus on LLMs
+I want to know the best way to run image generation on a MacOS machine - ComfyUI, for example, works but is slow - report on recent advancements in open-source imagen models and local inference tools for image generation.
+Best open source LLM benchmarking tools / software.  If I wanted to evaluate an open source model running on my MacOS machine, what are the best/most-recent methods?
+
+# Human Health
+Explain the benefits and recent popularity of taking daily creatine
+
+# American Politics
+Explain recent news and updates by Health and Human Services as lead by Robert F. Kennedy Jr
+
+# Finances and Cypto
+How have crypto regulations evolved in the EU vs US in 2024-2025?
+What are the latest Q1 2026 earnings reports from major tech companies?
+
+# Science
+Recent breakthroughs in fusion energy research - NIF, ITER, and private ventures
+What does the latest IPCC report say about climate tipping points in 2025?
+State of quantum computing hardware in 2026 - qubit counts and error correction
+
+# Tech/Engineering
+How do Apple's new neural engine chips compare to NVIDIA's AI accelerators?
+What are the latest developments in solid-state battery technology for EVs?
+Analysis of the recent AWS outage - root cause, impact, and mitigation strategies
+
+# Legal
+Latest antitrust case status against major tech platforms (Google, Meta, Apple)
+How does the new EU AI Act affect open source model development?
+Privacy implications of recent facial recognition legislation in US states
+
+# Education
+How have enrollment trends in CS degrees changed in the US/EU/Asia post-2020?
+What are the latest findings on LLM use in education (cheating vs augmentation)?
+State of open educational resources (OER) adoption in higher education 2026
+
+# Business
+Market share analysis: AI cloud infrastructure (AWS vs Azure vs GCP) Q1 2026
+How are major automakers adapting their EV strategies in response to changing demand?
+Supply chain disruptions in semiconductor manufacturing - 2025-2026 outlook
+
+# Breaking/News
+Summary of major developments from the 2026 World Economic Forum in Davos
+Latest updates on the 2026 US presidential election campaign finance reports
+Recent international space station missions and scientific payloads (Q1 2026)
+
+# Complex Multi-Part
+Research the supply chain for rare earth elements: mining locations, processing, major producers, geopolitical risks, and alternatives being developed. Deliver a report with: 1) geographic distribution, 2) market analysis, 3) substitution technologies, 4) policy implications.

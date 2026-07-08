@@ -10,12 +10,12 @@
 // grader, and writes artifacts + report.md under evals/runs/<benchmark>/<id>/.
 
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { loadYamlFile } from "./lib/yaml.mjs";
-import { runPi } from "./lib/pi.mjs";
+import { runPi, runPiWorkflow } from "./lib/pi.mjs";
 import { buildCompare, buildReport, collectRecords } from "./lib/report.mjs";
 import { buildHtml } from "./lib/html.mjs";
 import { parsePresetYaml } from "../shared/presets/runtime.mjs";
@@ -423,6 +423,216 @@ function loadRun(runDirArg) {
 	return { label: `${config.benchmark}/${config.run_id}`, records: collectRecords(runDir) };
 }
 
+// ---------------------------------------------------------------------------
+// Workflow bench (P6 phase 4): run ONE task from a task library through a
+// workflow program, archive the exact program text, and attach a human
+// verdict. The program revision is the variant under test.
+
+function loadTasks(name) {
+	const tasksPath = path.join(EVALS_DIR, "tasks", `${name}.txt`);
+	if (!existsSync(tasksPath)) fail(`no task library: ${tasksPath}`);
+	const tasks = [];
+	let section = "";
+	for (const line of readFileSync(tasksPath, "utf8").split("\n")) {
+		const trimmed = line.trim();
+		if (!trimmed) continue;
+		if (trimmed.startsWith("#")) {
+			section = trimmed.replace(/^#+\s*/, "");
+			continue;
+		}
+		tasks.push({ number: tasks.length + 1, section, text: trimmed });
+	}
+	if (!tasks.length) fail(`${tasksPath} contains no tasks`);
+	return tasks;
+}
+
+function humanVerdictRecord(config, { score, note }) {
+	return {
+		benchmark: config.benchmark,
+		run_id: config.run_id,
+		item_id: "human-verdict",
+		case_id: `task-${config.task_number}/verdict`,
+		tags: ["human-verdict"],
+		question: config.task,
+		answer: note,
+		model: config.model,
+		thinking: "off",
+		variant_id: config.workflow,
+		variant_source: `program:${config.program_path}`,
+		variant_sha256: config.program_sha256,
+		sample: 0,
+		status: "ok",
+		score,
+		max_score: 2,
+		description: note || "(no note)",
+		timing: {},
+	};
+}
+
+function writeVerdict(runDir, config, verdict) {
+	const itemDir = path.join(runDir, "artifacts", "human-verdict");
+	mkdirSync(itemDir, { recursive: true });
+	writeFileSync(path.join(itemDir, "parsed.json"), `${JSON.stringify(humanVerdictRecord(config, verdict), null, 2)}\n`);
+	writeReport(runDir);
+}
+
+async function cmdWorkflow(argv) {
+	const { positional, options } = parseArgs(argv, {
+		model: "value",
+		task: "value",
+		program: "value",
+		preset: "value",
+		"run-id": "value",
+	});
+	const workflowName = positional[0] ?? fail("usage: bench workflow <name> --model <id> [--task N] [--program path]");
+	const model = options.model ?? fail("--model is required: choose which model runs the workflow orchestrator");
+	const programPath = path.resolve(options.program ?? path.join(REPO_ROOT, "shared", "prompts", "workflow", `${workflowName}.md`));
+	if (!existsSync(programPath)) fail(`no workflow program: ${programPath}`);
+	const programText = readFileSync(programPath, "utf8");
+	const tasks = loadTasks(workflowName);
+
+	let task;
+	if (options.task) {
+		task = tasks[Number(options.task) - 1] ?? fail(`--task must be 1-${tasks.length}`);
+	} else if (process.stdin.isTTY) {
+		const { pickTask } = await import("./lib/menu.mjs");
+		task = await pickTask(tasks);
+	} else {
+		fail(`--task <1-${tasks.length}> is required when not running interactively`);
+	}
+
+	const runId = slug(options["run-id"] ?? `task${task.number}-${timestampRunId()}`);
+	const runDir = path.join(EVALS_DIR, "runs", "workflow", workflowName, runId);
+	const workspace = path.join(runDir, "workspace");
+	if (existsSync(runDir)) fail(`run '${runId}' already exists; pick a new --run-id`);
+	mkdirSync(workspace, { recursive: true });
+
+	const config = {
+		benchmark: `workflow-${workflowName}`,
+		run_id: runId,
+		created: new Date().toISOString(),
+		workflow: workflowName,
+		model,
+		preset: options.preset ?? "workflow",
+		task_number: task.number,
+		task_section: task.section,
+		task: task.text,
+		program_path: path.relative(REPO_ROOT, programPath),
+		program_sha256: sha256(programText),
+	};
+	writeFileSync(path.join(runDir, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+	// Archive the exact program revision this run executed — two runs can be
+	// diffed directly (diff a/program.md b/program.md) after the source moves on.
+	writeFileSync(path.join(runDir, "program.md"), programText);
+	const log = makeLogger(runDir);
+
+	log(`workflow start: ${workflowName} task=${task.number} (${task.section}) model=${model} program=${config.program_path} sha=${config.program_sha256.slice(0, 12)}`);
+	log(`task: ${task.text}`);
+	const prompt = `${programText.trimEnd()}\n\n## User Request\n\n${task.text}\n`;
+	const result = runPiWorkflow({
+		prompt,
+		preset: config.preset,
+		model,
+		cwd: workspace,
+		sessionDir: path.join(runDir, "session"),
+		artifactDir: path.join(runDir, "artifacts", "orchestrator"),
+	});
+
+	const runRecord = {
+		benchmark: config.benchmark,
+		run_id: runId,
+		item_id: "workflow-run",
+		case_id: `task-${task.number}/run`,
+		tags: ["run"],
+		question: task.text,
+		answer: result.text,
+		model,
+		thinking: "off",
+		variant_id: workflowName,
+		variant_source: `program:${config.program_path}`,
+		variant_sha256: config.program_sha256,
+		sample: 0,
+		status: result.exitCode === 0 ? "ok" : "error",
+		...(result.exitCode === 0 ? {} : { phase: "workflow", error: result.errorMessage }),
+		score: result.exitCode === 0 ? 1 : 0,
+		max_score: 1,
+		description: result.exitCode === 0 ? `workflow completed in ${result.elapsedSeconds.toFixed(0)}s` : result.errorMessage,
+		timing: { item_seconds: result.elapsedSeconds },
+	};
+	const runItemDir = path.join(runDir, "artifacts", "workflow-run");
+	mkdirSync(runItemDir, { recursive: true });
+	writeFileSync(path.join(runItemDir, "parsed.json"), `${JSON.stringify(runRecord, null, 2)}\n`);
+	log(`workflow ${runRecord.status}: exit=${result.exitCode} elapsed=${result.elapsedSeconds.toFixed(0)}s`);
+
+	const traceDirs = [];
+	const tracesRoot = path.join(workspace, ".pi", "subagent-traces");
+	if (existsSync(tracesRoot)) {
+		for (const entry of readdirSync(tracesRoot).sort()) {
+			if (existsSync(path.join(tracesRoot, entry, "manifest.json"))) traceDirs.push(path.join(tracesRoot, entry));
+		}
+	}
+
+	writeReport(runDir);
+	console.log(`\nWorkspace:    ${workspace}`);
+	const reportArtifact = path.join(workspace, "reports", "report.md");
+	if (existsSync(reportArtifact)) console.log(`Deliverable:  ${reportArtifact}`);
+	for (const traceDir of traceDirs) {
+		console.log(`Trace:        ${traceDir}`);
+		console.log(`  retro:      node evals/bench.mjs retro ${path.relative(process.cwd(), traceDir)}`);
+	}
+	console.log(`Run report:   ${path.join(runDir, "report.html")}`);
+	console.log(`Verdict:      node evals/bench.mjs feedback ${path.relative(process.cwd(), runDir)} --score <0-2> --note "..."`);
+
+	if (process.stdin.isTTY) {
+		const { askVerdict } = await import("./lib/menu.mjs");
+		const verdict = await askVerdict();
+		if (verdict) {
+			writeVerdict(runDir, config, verdict);
+			console.log("Verdict recorded.");
+		}
+	}
+	process.exit(result.exitCode === 0 ? 0 : 1);
+}
+
+// bench feedback <run-dir>: record or revise the human verdict on a
+// workflow run after actually reading its deliverable.
+function cmdFeedback(argv) {
+	const { positional, options } = parseArgs(argv, { score: "value", note: "value" });
+	const runDir = path.resolve(positional[0] ?? fail("usage: bench feedback <run-dir> --score <0-2> [--note text]"));
+	const configPath = path.join(runDir, "config.json");
+	if (!existsSync(configPath)) fail(`not a run directory (no config.json): ${runDir}`);
+	const config = JSON.parse(readFileSync(configPath, "utf8"));
+	if (!config.workflow) fail("feedback applies to workflow runs (benchmark runs are graded automatically)");
+	const score = Number(options.score);
+	if (!Number.isInteger(score) || score < 0 || score > 2) fail("--score must be 0, 1, or 2");
+	writeVerdict(runDir, config, { score, note: options.note ?? "" });
+	console.log(`Recorded verdict ${score}/2 for ${config.benchmark}/${config.run_id}`);
+	console.log(`Report: ${path.join(runDir, "report.html")}`);
+}
+
+// bench clean: sweep eval run artifacts (workspaces included).
+async function cmdClean(argv) {
+	const { options } = parseArgs(argv, { yes: "boolean" });
+	const runsDir = path.join(EVALS_DIR, "runs");
+	if (!existsSync(runsDir)) {
+		console.log("Nothing to clean.");
+		return;
+	}
+	const { execSync } = await import("node:child_process");
+	const size = execSync(`du -sh "${runsDir}"`, { encoding: "utf8" }).split("\t")[0].trim();
+	if (!options.yes) {
+		if (!process.stdin.isTTY) fail("pass --yes to clean non-interactively");
+		const { askBoolStandalone } = await import("./lib/menu.mjs");
+		if (!(await askBoolStandalone(`Delete all eval run artifacts (${size} in ${runsDir})?`, false))) {
+			console.log("Aborted.");
+			return;
+		}
+	}
+	const { rmSync } = await import("node:fs");
+	rmSync(runsDir, { recursive: true, force: true });
+	console.log(`Removed ${runsDir} (${size}).`);
+}
+
 // bench retro <trace-dir>: score an existing .pi/subagent-traces run with
 // scripted checks (+ optional judged task-fulfillment) and write a standard
 // run directory so report/compare work on traces too.
@@ -551,9 +761,12 @@ const USAGE = `Usage:
   node evals/bench.mjs run <benchmark> --models <id,...> [--thinking off,...] [--variants id,...]
                                        [--judge-model id] [--judge-thinking level]
                                        [--samples N] [--limit N] [--run-id id] [--resume] [--dry-run]
+  node evals/bench.mjs workflow <name> --model <id> [--task N] [--program path] [--run-id id]
+  node evals/bench.mjs feedback <run-dir> --score <0-2> [--note text]
   node evals/bench.mjs retro <trace-dir> [--judge-model id] [--judge-thinking level] [--run-id id]
   node evals/bench.mjs report <run-dir>
-  node evals/bench.mjs compare <run-dir-a> <run-dir-b>`;
+  node evals/bench.mjs compare <run-dir-a> <run-dir-b>
+  node evals/bench.mjs clean [--yes]`;
 
 async function cmdMenu() {
 	const { runMenu } = await import("./lib/menu.mjs");
@@ -568,7 +781,10 @@ async function cmdMenu() {
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === "run") await cmdRun(rest);
+else if (command === "workflow") await cmdWorkflow(rest);
+else if (command === "feedback") cmdFeedback(rest);
 else if (command === "retro") await cmdRetro(rest);
+else if (command === "clean") await cmdClean(rest);
 else if (command === "report") cmdReport(rest);
 else if (command === "compare") cmdCompare(rest);
 else if (command === "menu" || (!command && process.stdin.isTTY)) await cmdMenu();

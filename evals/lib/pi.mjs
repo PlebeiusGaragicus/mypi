@@ -78,6 +78,40 @@ function writeArtifacts(artifactDir, { args, output, stderr, textFile }) {
 	writeFileSync(path.join(artifactDir, "stderr.txt"), stderr ?? "");
 }
 
+// Full-capability workflow invocation: unlike benchmark calls, the preset,
+// extensions (subagent tool), skills, and tools all stay enabled — this IS
+// the system under test. Runs in `cwd` (a fresh workspace) so artifacts and
+// subagent traces land there.
+export function runPiWorkflow({ prompt, preset, model, cwd, sessionDir, artifactDir }) {
+	const args = ["--mode", "json", "--preset", preset, "--model", model, "--session-dir", sessionDir, "-p", prompt];
+	const started = process.hrtime.bigint();
+	// Intentionally no timeout: workflow runs take as long as they take.
+	const proc = spawnSync("pi", args, {
+		cwd,
+		encoding: "utf8",
+		maxBuffer: MAX_STDOUT_BYTES,
+		stdio: ["ignore", "pipe", "inherit"],
+	});
+	const elapsedSeconds = Number(process.hrtime.bigint() - started) / 1e9;
+
+	if (proc.error) {
+		const output = { text: "", metadata: {}, event_count: 0, elapsed_seconds: elapsedSeconds };
+		writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: String(proc.error), textFile: "final-reply.txt" });
+		return { exitCode: 1, text: "", errorMessage: `failed to launch pi: ${proc.error.message}`, elapsedSeconds };
+	}
+	const output = parseFinalOutput(proc.stdout ?? "");
+	output.elapsed_seconds = elapsedSeconds;
+	writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: "", textFile: "final-reply.txt" });
+	const exitCode = proc.status ?? 0;
+	const errorMessage =
+		output.metadata.stopReason === "error"
+			? String(output.metadata.errorMessage || "orchestrator stopped with an error")
+			: exitCode !== 0
+				? `pi exited with code ${exitCode}`
+				: "";
+	return { exitCode: errorMessage && exitCode === 0 ? 1 : exitCode, text: output.text, errorMessage, elapsedSeconds };
+}
+
 export function runPi({ prompt, systemPrompt, model, thinking, artifactDir, dryRunText = null, textFile = "answer.txt" }) {
 	const args = piArgs({ prompt, systemPrompt, model, thinking });
 	const started = process.hrtime.bigint();

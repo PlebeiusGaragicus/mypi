@@ -51,10 +51,10 @@ function listConfiguredModels() {
 	}
 }
 
-export async function runMenu(evalsDir) {
-	// A persistent line listener with a queue instead of rl.question():
-	// between question() calls readline has no listener attached, so piped
-	// input (e.g. scripted menu runs) would flow and be silently dropped.
+// A persistent line listener with a queue instead of rl.question(): between
+// question() calls readline has no listener attached, so piped input (e.g.
+// scripted menu runs) would flow and be silently dropped.
+export function createPrompter() {
 	const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: process.stdin.isTTY });
 	const bufferedLines = [];
 	const waiters = [];
@@ -84,6 +84,60 @@ export async function runMenu(evalsDir) {
 		if (["n", "no"].includes(reply)) return false;
 		return fallback;
 	};
+	return { ask, askBool, close: () => rl.close() };
+}
+
+// Pick one task from a task library (used by bench workflow).
+export async function pickTask(tasks) {
+	const prompter = createPrompter();
+	try {
+		let section = null;
+		for (const task of tasks) {
+			if (task.section !== section) {
+				section = task.section;
+				console.log(`\n# ${section}`);
+			}
+			console.log(`  ${task.number}. ${task.text.length > 110 ? `${task.text.slice(0, 110)}…` : task.text}`);
+		}
+		console.log("");
+		const picked = Number(await prompter.ask(`Choose one task by number (1-${tasks.length})`, "1"));
+		const task = tasks[picked - 1];
+		if (!task) throw new Error(`no task number ${picked}`);
+		return task;
+	} finally {
+		prompter.close();
+	}
+}
+
+// Post-run human verdict; returns null when skipped.
+export async function askVerdict() {
+	const prompter = createPrompter();
+	try {
+		const raw = await prompter.ask("Score this run 0-2 (blank to skip and use `bench feedback` later)", "");
+		if (raw === "") return null;
+		const score = Number(raw);
+		if (!Number.isInteger(score) || score < 0 || score > 2) {
+			console.log("Not a valid score; skipping — record later with `bench feedback`.");
+			return null;
+		}
+		const note = await prompter.ask("One-line note (what was good/bad)", "");
+		return { score, note };
+	} finally {
+		prompter.close();
+	}
+}
+
+export async function askBoolStandalone(question, fallback) {
+	const prompter = createPrompter();
+	try {
+		return await prompter.askBool(question, fallback);
+	} finally {
+		prompter.close();
+	}
+}
+
+export async function runMenu(evalsDir) {
+	const { ask, askBool, close } = createPrompter();
 	const printOptions = (options) => options.forEach((option, index) => console.log(`  ${index + 1}. ${option}`));
 	// Accepts numbers ("1,3"), custom ids, or a mix; blank takes the default.
 	const selectMany = async (title, options, defaults) => {
@@ -153,6 +207,6 @@ export async function runMenu(evalsDir) {
 		if (!(await askBool("Launch?", true))) throw new Error("aborted");
 		return argv;
 	} finally {
-		rl.close();
+		close();
 	}
 }

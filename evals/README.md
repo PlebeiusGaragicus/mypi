@@ -2,9 +2,9 @@
 
 Local eval harness for measuring mypi prompt changes instead of eyeballing
 them. Design and roadmap: [docs/proposals.md — P6](../docs/proposals.md).
-Phases 1–3 are implemented: deterministic and LLM-judged single-turn
-benchmarks, run comparison, and trace retrospectives. Orchestrator
-comparison and the agent-driven eval loop are later phases.
+Phases 1–4 are implemented: deterministic and LLM-judged single-turn
+benchmarks, run comparison, trace retrospectives, and the workflow bench.
+The agent-driven eval loop is the remaining phase.
 
 Current benchmarks:
 
@@ -55,9 +55,12 @@ hidden. A prompt change is only an improvement if the compare says so.
 ```sh
 node evals/bench.mjs                               # interactive menu
 node evals/bench.mjs run <benchmark> --models <id,...> [options]
+node evals/bench.mjs workflow <name> --model <id> [--task N] [--program path]
+node evals/bench.mjs feedback <run-dir> --score <0-2> [--note text]
 node evals/bench.mjs retro <trace-dir> [--judge-model id]
 node evals/bench.mjs report <run-dir>              # regenerate report.md/.html from artifacts
 node evals/bench.mjs compare <run-dir-a> <run-dir-b>
+node evals/bench.mjs clean [--yes]                 # delete all run artifacts
 ```
 
 Run options: `--thinking off,low,...` (matrix over each model), `--variants
@@ -106,6 +109,45 @@ with the same tables plus a filterable item browser (by model, variant, tag,
 pass/fail/error, free-text search) where each item expands to show the
 question, the full answer, and the judge's verdict. Open it straight from
 disk; there are no external assets.
+
+## Workflow bench
+
+Workflow prompts are natural-language programs; the wording of the program
+text is the main thing to iterate. `bench workflow` runs ONE task from a
+task library through a workflow program and attaches your verdict:
+
+```sh
+node evals/bench.mjs workflow deepresearch --model lmstudio/qwen/qwen3.6-35b-a3b
+```
+
+`--model` is required — the orchestrator model is always an explicit choice.
+Without `--task N`, a menu lists the library
+(`evals/tasks/deepresearch.txt`, one prompt per line, `#` section headers —
+never run in bulk). The run launches `pi --preset workflow` in a fresh
+workspace under `evals/runs/workflow/<name>/<run-id>/workspace/`, with the
+program (`shared/prompts/workflow/<name>.md`, or `--program <path>` for a
+scratch revision) plus the task as the prompt.
+
+Versioning is git plus archival: every run copies the exact program text it
+executed to `<run-dir>/program.md` and pins its sha256 in the records, so
+two runs are diffable (`diff a/program.md b/program.md`) after the source
+file has moved on — no separate version registry.
+
+After the run it prints the workspace, deliverable, and trace paths (with a
+ready-made `bench retro` command for the trace — retro is manual here by
+design) and asks for a 0–2 score plus a note; skip it and record later with
+`bench feedback <run-dir> --score N --note "..."` after actually reading the
+deliverable. The verdict is a normal record, so the loop is:
+
+```sh
+# edit shared/prompts/workflow/deepresearch.md, then:
+node evals/bench.mjs workflow deepresearch --model <id> --task 7
+node evals/bench.mjs feedback evals/runs/workflow/deepresearch/<new-run> --score 2 --note "..."
+node evals/bench.mjs compare evals/runs/workflow/deepresearch/{<old-run>,<new-run>}
+```
+
+`task-N/run` cells compare completion; `task-N/verdict` cells compare your
+judgment of the deliverable across program revisions.
 
 ## Trace retrospectives
 
