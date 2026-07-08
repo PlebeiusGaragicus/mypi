@@ -32,22 +32,11 @@ Cost: one extra read/write per transition, a slightly longer orchestrator prompt
 
 ---
 
-## P2 — Parallel worker cap (partially implemented: capped at 4)
+## P2 — Make the parallel worker cap configurable
 
-**Status: cap lowered from 100 to 4. Configurability still open.**
+**Status: the cap itself shipped (lowered from 100 to 4, matching LM Studio's concurrent-request limit); only configurability remains open.**
 
-`subagent`'s parallel mode previously allowed up to 100 concurrent workers. It is now capped at 4, matching LM Studio's concurrent-request limit.
-
-**Why the cap matters even though LM Studio queues requests.** It's true that the inference server queues excess requests rather than crashing — but the queue is only the last link in the chain. Each parallel task spawns a *full `pi` process* on this machine: a Node/Bun runtime, session state, an open HTTP connection held for the entire wait. Launching 100 at once means:
-
-1. **Local resource pressure** — 100 processes × runtime overhead, before a single token is generated.
-2. **Timeout risk** — a worker at position 90 in the queue holds its connection open through ~89 × (full worker runtime) of dead waiting. Client or server timeouts turn "slow" into "failed," and the orchestrator sees spurious error returns.
-3. **All-or-nothing result reporting** — parallel results return only when *all* workers finish, so one queue-stuck straggler stalls the whole workflow phase.
-4. **No backpressure signal** — the orchestrator (and you, watching) can't distinguish "model is working" from "89 processes are idling in a queue."
-
-A cap of 4 means at most 4 processes exist at a time and every launched worker is actually being served. The orchestrator naturally batches larger fan-outs into successive calls of ≤4.
-
-**Open question for consideration:** should the cap be configurable via `mypi.env` (e.g. `SUBAGENT_MAX_PARALLEL=4`) so a beefier inference box can raise it without a code change? Lean yes, but it's one more knob.
+Should the cap be configurable via `mypi.env` (e.g. `SUBAGENT_MAX_PARALLEL=4`) so a beefier inference box can raise it without a code change? Lean yes, but it's one more knob.
 
 ---
 
@@ -106,9 +95,34 @@ The split is the better first move: it helps every repo consumer of AGENTS.md, n
 
 ---
 
-## P6 — Evals: prompt iteration, trace retrospectives, and orchestrator comparison
+## P6 — Evals: remaining phases
 
-**Status: phases 1–3 implemented** (`evals/` harness: deterministic + judged benchmarks, `bench compare`, `bench retro` trace retrospectives; suites: `classifier-labels`, `judge-verdicts`, plus `bullshit-detector` and `skibidi` ported from EXAMPLE/pi-bench — see [evals/README.md](https://github.com/PlebeiusGaragicus/mypi/blob/main/evals/README.md)). **Phases 4–5 open** (orchestrator comparison driver; agent-driven eval loop).
+**Status: phases 1–3 shipped and removed from this page** — deterministic + judged benchmarks, `bench compare`, `bench retro`, four case suites; the living documentation is [evals/README.md](https://github.com/PlebeiusGaragicus/mypi/blob/main/evals/README.md). What remains:
+
+### Phase 4 — Workflow bench: iterate workflow programs against real tasks
+
+**Status: proposed, awaiting approval.**
+
+Workflow prompts are natural-language programs, and the highest-leverage eval axis is the *program text*, not the model — models mostly follow instructions; the wording decides whether the workflow succeeds. Phase 4 makes single-task workflow iteration a one-command loop with a human verdict attached.
+
+New command:
+
+```sh
+node evals/bench.mjs workflow deepresearch            # menu lists the task library, pick ONE
+node evals/bench.mjs workflow deepresearch --task 7   # or pick directly
+```
+
+1. **Task library.** `evals/tasks/deepresearch.txt` — the ~20 example research prompts (ported from EXAMPLE/pi-bench), one per line with `#` section headers. Never run in bulk; the command runs exactly one chosen task.
+2. **Run.** Launches `pi --preset workflow` in a fresh workspace `evals/runs/workflow/<run-id>/workspace/`, with the prompt = the workflow program (`shared/prompts/workflow/deepresearch.md`) + the chosen task appended as the user request. The program text's SHA-256 is pinned in the run config — the program revision is the variant under test.
+3. **Auto-retro.** When the run ends, the phase-3 retro runs over the trace in the workspace: scripted checks plus (with `--judge-model`) judged task fulfillment per worker.
+4. **Human verdict.** The command then prints the artifact paths (workspace `reports/report.md`, retro `report.html`) and asks: score 0–2 plus a free-text note. Recorded as a `human-verdict` record in the same run. `bench feedback <run-dir> --score N --note "..."` records or revises the verdict later, after actually reading the report.
+5. **Iterate.** Edit the workflow program, rerun the same task, `bench compare` the two runs: retro checks and the human verdict line up per task, and the two program SHAs identify exactly which revision won.
+
+Orchestrator-model comparison falls out for free: same task, `--model` varied, compare — but it's the secondary axis by design.
+
+### Phase 5 — Agent-driven eval loop
+
+An eval-runner skill/agent: run a suite or workflow bench → read the report and failing artifacts → propose a prompt edit as a diff for human approval → rerun → report the delta. Build only once phase 4 has made "run one task and judge it" a one-command operation.
 
 mypi's presets and workflow prompts are currently tuned by feel. This proposal adds an `evals/` harness so a prompt change can be judged by numbers: run a fixed case suite before and after, compare, keep the change only if it measurably improved. The architecture is ported from the `EXAMPLE/pi-bench` harness (config-per-run, full artifact preservation, judge-with-hint templates, strict `Score:/Description:` parsing, resumable manifests) — the architecture, not the code, which carries dead paths and a non-functioning copied `evals/` shell script.
 
