@@ -2,13 +2,15 @@
 
 Local eval harness for measuring mypi prompt changes instead of eyeballing
 them. Design and roadmap: [docs/proposals.md — P6](../docs/proposals.md).
-Phases 1–2 are implemented: deterministic and LLM-judged single-turn
-benchmarks plus run comparison. Trace retrospectives and orchestrator
-comparison are later phases.
+Phases 1–3 are implemented: deterministic and LLM-judged single-turn
+benchmarks, run comparison, and trace retrospectives. Orchestrator
+comparison and the agent-driven eval loop are later phases.
 
 Current benchmarks:
 
 - `classifier-labels` — deterministic exact-match suite for the classifier preset
+- `judge-verdicts` — deterministic PASS/FAIL suite for the judge preset
+  (verdict correctness and format compliance scored separately)
 - `bullshit-detector` — 100 judged cases (0–2): does the model call out
   professional-sounding nonsense? (ported from EXAMPLE/pi-bench)
 - `skibidi` — 17 judged cases (0/1): current internet slang knowledge
@@ -53,7 +55,8 @@ hidden. A prompt change is only an improvement if the compare says so.
 ```sh
 node evals/bench.mjs                               # interactive menu
 node evals/bench.mjs run <benchmark> --models <id,...> [options]
-node evals/bench.mjs report <run-dir>              # regenerate report.md from artifacts
+node evals/bench.mjs retro <trace-dir> [--judge-model id]
+node evals/bench.mjs report <run-dir>              # regenerate report.md/.html from artifacts
 node evals/bench.mjs compare <run-dir-a> <run-dir-b>
 ```
 
@@ -103,6 +106,27 @@ with the same tables plus a filterable item browser (by model, variant, tag,
 pass/fail/error, free-text search) where each item expands to show the
 question, the full answer, and the judge's verdict. Open it straight from
 disk; there are no external assets.
+
+## Trace retrospectives
+
+`bench retro` scores an existing workflow trace
+(`.pi/subagent-traces/<run-id>/`) instead of running new prompts:
+
+```sh
+node evals/bench.mjs retro .pi/subagent-traces/<run-id> --judge-model <id>
+```
+
+Scripted checks read facts straight from `manifest.json` and the worker
+session JSONL files — no model calls: worker completed cleanly, final reply
+non-empty, task under the 4k `{previous}`-blowup threshold, no failed tool
+calls, no identical-tool-call loops, session ends with assistant text.
+With `--judge-model`, each worker's final reply is additionally judged 0–2
+for task fulfillment. Results land in `evals/runs/retro/<run-id>/` as
+standard records — records map model = the LLM the worker ran on and
+variant = the agent preset name, so the same reports answer "which agent
+prompt misbehaves" and, across traces, "which local model works best" —
+and `report.html` / `bench compare` work unchanged (rerun the same workflow
+after a prompt fix and compare the two retro runs).
 
 ## Benchmark layout
 

@@ -423,6 +423,123 @@ function loadRun(runDirArg) {
 	return { label: `${config.benchmark}/${config.run_id}`, records: collectRecords(runDir) };
 }
 
+// bench retro <trace-dir>: score an existing .pi/subagent-traces run with
+// scripted checks (+ optional judged task-fulfillment) and write a standard
+// run directory so report/compare work on traces too.
+async function cmdRetro(argv) {
+	const { positional, options } = parseArgs(argv, {
+		"judge-model": "value",
+		"judge-thinking": "value",
+		"run-id": "value",
+	});
+	const traceDir = path.resolve(positional[0] ?? fail("usage: bench retro <trace-dir> [--judge-model id]"));
+	const { analyzeTrace, judgeableWorkers, renderRetroJudgePrompt, parseRetroJudge } = await import("./lib/retro.mjs");
+
+	let analysis;
+	try {
+		analysis = analyzeTrace(traceDir);
+	} catch (error) {
+		fail(error.message);
+	}
+	const { manifest, workers, findings } = analysis;
+
+	const runId = slug(options["run-id"] ?? `${manifest.traceRunId ?? path.basename(traceDir)}-${timestampRunId()}`);
+	const runDir = path.join(EVALS_DIR, "runs", "retro", runId);
+	const judge = options["judge-model"] ? { model: options["judge-model"], thinking: options["judge-thinking"] ?? "off" } : null;
+	const config = {
+		benchmark: "retro",
+		run_id: runId,
+		created: new Date().toISOString(),
+		trace_dir: traceDir,
+		trace_run_id: manifest.traceRunId ?? null,
+		parent_agent: manifest.parentAgent ?? null,
+		judge,
+	};
+	mkdirSync(runDir, { recursive: true });
+	writeFileSync(path.join(runDir, "config.json"), `${JSON.stringify(config, null, 2)}\n`);
+	const log = makeLogger(runDir);
+	const resultsPath = path.join(runDir, "results.jsonl");
+
+	const baseRecord = (worker, caseId) => ({
+		benchmark: "retro",
+		run_id: runId,
+		case_id: caseId,
+		question: worker?.task ?? "",
+		answer: worker?.finalReply ?? "",
+		model: worker?.model ?? "unknown",
+		thinking: "off",
+		variant_id: worker?.agent ?? "unmatched",
+		variant_source: `trace:${manifest.traceRunId ?? path.basename(traceDir)}`,
+		sample: 0,
+		judge_model: judge?.model ?? null,
+		judge_thinking: judge?.thinking ?? null,
+		timing: {},
+	});
+	const emit = (record) => {
+		const itemId = `${slug(record.case_id)}__${sha256(record.case_id).slice(0, 8)}`;
+		const itemDir = path.join(runDir, "artifacts", itemId);
+		mkdirSync(itemDir, { recursive: true });
+		writeFileSync(path.join(itemDir, "parsed.json"), `${JSON.stringify({ ...record, item_id: itemId }, null, 2)}\n`);
+		appendFileSync(resultsPath, `${JSON.stringify({ ...record, item_id: itemId })}\n`);
+		return itemDir;
+	};
+
+	log(`retro start: trace=${traceDir} workers=${workers.length} findings=${findings.length} judged=${Boolean(judge)}`);
+	let issues = 0;
+	for (const finding of findings) {
+		if (!finding.score) issues++;
+		emit({
+			...baseRecord(finding.worker, finding.caseId),
+			tags: finding.tags,
+			status: "ok",
+			score: finding.score,
+			max_score: 1,
+			description: finding.description,
+		});
+		log(`check ${finding.score ? "ok  " : "FAIL"}: ${finding.caseId} — ${finding.description}`);
+	}
+
+	if (judge) {
+		const targets = judgeableWorkers(workers);
+		log(`judge phase start: workers=${targets.length} judge=${judge.model}`);
+		for (const worker of targets) {
+			const caseId = `w${String(worker.index).padStart(2, "0")}-${worker.agent}/task-fulfillment`;
+			const record = { ...baseRecord(worker, caseId), tags: ["judged"] };
+			const itemDir = path.join(runDir, "artifacts", `${slug(caseId)}__${sha256(caseId).slice(0, 8)}`);
+			const result = runPi({
+				prompt: renderRetroJudgePrompt(worker),
+				systemPrompt: JUDGE_SYSTEM_PROMPT,
+				model: judge.model,
+				thinking: judge.thinking,
+				artifactDir: path.join(itemDir, "judge"),
+				textFile: "judge.txt",
+			});
+			record.timing = { judge_seconds: result.elapsedSeconds, item_seconds: result.elapsedSeconds };
+			if (result.exitCode !== 0) {
+				issues++;
+				emit({ ...record, status: "error", phase: "judge", error: result.errorMessage, score: null, max_score: null, description: result.errorMessage });
+				log(`judge error: ${caseId} — ${result.errorMessage.split("\n")[0]}`);
+				continue;
+			}
+			try {
+				const graded = parseRetroJudge(result.text);
+				emit({ ...record, status: "ok", score: graded.score, max_score: graded.maxScore, description: graded.description });
+				log(`judged: ${caseId} score=${graded.score}/${graded.maxScore} (${graded.description})`);
+			} catch (error) {
+				issues++;
+				emit({ ...record, status: "error", phase: "grade", error: String(error), score: null, max_score: null, description: String(error) });
+				log(`judge parse error: ${caseId} — ${error}`);
+			}
+		}
+	}
+
+	const reportPath = writeReport(runDir);
+	log(`retro complete: findings=${findings.length} issues=${issues}`);
+	console.log(`\nReport: ${reportPath}`);
+	console.log(`HTML:   ${path.join(runDir, "report.html")}`);
+	process.exit(0);
+}
+
 function cmdCompare(argv) {
 	const { positional } = parseArgs(argv, {});
 	if (positional.length !== 2) fail("usage: bench compare <run-dir-a> <run-dir-b>");
@@ -434,6 +551,7 @@ const USAGE = `Usage:
   node evals/bench.mjs run <benchmark> --models <id,...> [--thinking off,...] [--variants id,...]
                                        [--judge-model id] [--judge-thinking level]
                                        [--samples N] [--limit N] [--run-id id] [--resume] [--dry-run]
+  node evals/bench.mjs retro <trace-dir> [--judge-model id] [--judge-thinking level] [--run-id id]
   node evals/bench.mjs report <run-dir>
   node evals/bench.mjs compare <run-dir-a> <run-dir-b>`;
 
@@ -450,6 +568,7 @@ async function cmdMenu() {
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === "run") await cmdRun(rest);
+else if (command === "retro") await cmdRetro(rest);
 else if (command === "report") cmdReport(rest);
 else if (command === "compare") cmdCompare(rest);
 else if (command === "menu" || (!command && process.stdin.isTTY)) await cmdMenu();

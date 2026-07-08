@@ -1,0 +1,7 @@
+# System-prompt variants for the judge-verdicts benchmark.
+# The default pulls the live prompt from agents/judge.yml; add inline
+# candidates here to A/B prompt changes before folding them into the preset.
+
+variants:
+  - id: preset-judge
+    preset: judge
