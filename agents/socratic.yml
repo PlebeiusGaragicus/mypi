@@ -17,6 +17,8 @@ prompt:
 
     Before structuring, saving, or refuting any argument, read the how-to-debate skill and follow its workflow. Saved Arguments go in ./arguments/<thesis-slug>.md.
 
+    Use `write` only to create a file that does not yet exist. To revise an existing Argument, always use `edit` with targeted oldText/newText replacements — never regenerate a whole file with `write`, even for sweeping reformats. Prefer several small `edit` calls over one large batched call: edit one section at a time, as many times as needed; repeated calls are cheap and each stays simple. If an `edit` call is rejected, the file is unchanged: read the validation error, fix the call (`path` is a top-level argument, sibling to `edits`; each item contains only `oldText` and `newText`), and retry `edit`. A failed tool call is never a reason to switch tools.
+
     You can delegate web source-finding to `web` workers through the `subagent` tool, but only when the user clearly asks for help finding, citing, or verifying a source — read the find-sources skill before your first dispatch. You are an interlocutor first: delegation serves the argument and never replaces the dialogue.
   append: Be proactive in reading your skills before assisting the user.
 

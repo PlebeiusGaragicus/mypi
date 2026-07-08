@@ -186,3 +186,37 @@ evals/
 5. **Close the loop.** An eval-runner skill/agent: run suite → read report + compare against baseline run → inspect failing artifacts → propose a prompt edit (as a diff, for human approval initially) → rerun → report the delta. Only worth building once phases 1–3 have made "run and compare" a one-command operation.
 
 **Open questions:** whether the judge should run through `pi` (uniform, uses provider config) or hit the OpenAI-compatible endpoint directly (fewer moving parts); and whether retro judged dimensions score per-session or per-worker-task when a session contains several. Lean `pi` and per-session to start.
+
+---
+
+## P7 — Browser co-editing surface for preset documents (adopt Plannotator)
+
+**Status: proposed, not implemented.**
+
+**Goal:** a rich web UI where the user can open a markdown document the agent is working on (first target: `./arguments/<thesis-slug>.md` from the `socratic` preset), select text, annotate, and edit directly — with annotations flowing back into the pi session as feedback and edits landing on disk. It should also browse local files in the working directory, so any preset can use it (workflow reports, plans, drafts).
+
+### What Plannotator provides
+
+[Plannotator](https://github.com/backnotprop/plannotator) (`backnotprop/plannotator`, v0.22) is a local, browser-based review surface for coding agents, and it ships a **first-class pi extension** installable with `pi install npm:@plannotator/pi-extension` (prebuilt HTML assets included; `pi -e npm:@plannotator/pi-extension` to trial without installing). Relevant capabilities, verified in source:
+
+- **Markdown annotation** (`/plannotator-annotate <file>`): renders the file in the browser; the user highlights text, comments, then sends structured feedback that arrives in the pi session via `pi.sendUserMessage(..., { deliverAs: "followUp" })` — i.e. as a normal user turn the agent acts on.
+- **Folder mode** (`/plannotator-annotate <dir>/`): a file browser over the directory (md/txt/html), with chokidar file-watching so agent-side edits appear live in the UI.
+- **True co-editing**: the annotate server exposes `POST /api/source/save` — the user can edit the document in the browser and save back to disk, guarded by a `baseHash` conflict check so human and agent edits don't silently clobber each other. Works in single-file and folder mode.
+- **Programmatic API for other extensions**: a shared event channel (`plannotator:request`, exported from `@plannotator/pi-extension/plannotator-events`) accepts actions including `annotate` (`{ filePath, markdown?, mode?: "annotate" | "annotate-folder", folderPath?, gate? }`) with `{ status: "handled" | "unavailable" | "error" }` responses — so a mypi extension can open the UI without shelling out or importing Plannotator internals.
+- **Also included** (free extras, not the goal here): file-based plan mode with visual plan review, code review of local diffs/PRs, annotate-last-message, URL/HTML annotation.
+- **Runs where pi runs**: plain `node:http` servers (pi loads extensions via jiti, so no Bun dependency), bound locally, with a remote-session fallback that prints the URL for port-forwarding.
+
+This matches the mechanic we want closely enough that building our own rich selection/annotation editor (Plannotator carries entire `packages/editor` + `packages/ui` React workspaces for it) is not justified.
+
+### Proposed integration
+
+1. **Peer install, not a package dependency.** mypi stays zero-runtime-dependency: users run `pi install npm:@plannotator/pi-extension` alongside mypi. Document it in the docs site; optionally have `doctor`/bootstrap detect and suggest it.
+2. **New mypi extension `extensions/tools/annotate.ts`** registering an `annotate` tool (TypeBox params: `path`, optional `mode`). It dispatches `{ action: "annotate", payload: { filePath | folderPath, mode } }` on `plannotator:request` and reports the session URL. If the channel doesn't answer (Plannotator not installed) it returns a clear error telling the user the one-line install command. Wire `annotate` into `EXTENSION_TOOL_NAMES` in `shared/presets/runtime.mjs` so presets opt in via `extensions:`.
+3. **Preset wiring.** `socratic` adds the extension plus prompt guidance: after saving or substantially revising an Argument, offer to open it for annotation; when the user asks to "review", "mark up", or "co-edit" a document, call `annotate`. Other presets (`workflow` reports, `write`) can adopt the same tool later with no new code.
+4. **Staleness discipline.** Browser-side saves change the file underneath the agent. Add one line to any preset using the tool: *after an annotation/co-edit session ends, re-read the file before your next `edit`* — this composes with the existing edit-over-write rule in `socratic`.
+
+### Open questions
+
+- **Tool-set interplay.** Preset activation calls `pi.setActiveTools()`, and Plannotator manages its own planning-only tools around the active set. Verify a `/preset` switch mid-session doesn't strand or drop `plannotator_submit_plan`, and that our `annotate` tool survives Plannotator's phase transitions. Likely fine (Plannotator strips only its own tools) but needs a smoke test.
+- **Agent-initiated vs user-initiated.** Plannotator already gives users `/plannotator-annotate` for free once installed. The mypi `annotate` tool's value is letting the *agent* open the surface at the right moment; decide whether that's worth a tool slot in small local models' tool lists, or whether prompt guidance pointing users at the slash command suffices as a v1.
+- **Local models and feedback volume.** Annotation feedback arrives as one composed user message; large annotation sets on a ~30B model could crowd context. If it becomes a problem, mirror P3's approach: cap and point at the file.
