@@ -21,6 +21,8 @@ workers:
 
 The preset's `workers:` list is the allowed worker catalog — the orchestrator does not infer workers from every installed preset. Before the agent starts, the extension appends a generated catalog of allowed workers to the system prompt.
 
+The `workflow` preset is the full workflow *interpreter*, but `subagent` itself is not workflow-exclusive: any preset may declare the extension plus a `workers:` list to delegate bounded work mid-conversation. `socratic` does this with a single `web` worker for source-finding (see the `find-sources` skill). Conversational delegators set `cleanSession: false` to opt out of the clean-session rule that workflow presets keep.
+
 ## Running A Workflow
 
 Workflow presets are intended to start from fresh context:
@@ -61,7 +63,7 @@ Each call behaves like a function invocation:
 - `task` is the argument payload.
 - Files, manifests, screenshots, and traces are side effects.
 - The worker's final reply is the return value.
-- Nonzero exit, blocker text, missing artifact, or failed validation is an error return.
+- Nonzero exit, blocker text, missing artifact, or failed validation is an error return. A worker that hits the output-token limit or exits with an empty final reply is also reported as failed, with the reason (see the [orchestrator research report](orchestrator-research-report.md)).
 
 ## Trace Behavior
 

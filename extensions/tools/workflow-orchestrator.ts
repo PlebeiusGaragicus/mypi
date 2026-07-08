@@ -1,8 +1,10 @@
 // @ts-nocheck
 /**
- * Preset-aware workflow orchestrator. The extension module is package-loaded, but
+ * Preset-aware subagent delegation. The extension module is package-loaded, but
  * the `subagent` tool is only active for presets that declare
- * `extensions: [workflow-orchestrator]`.
+ * `extensions: [workflow-orchestrator]` plus a `workers:` catalog — the
+ * `workflow` interpreter preset, or any conversational preset that delegates
+ * bounded work (e.g. `socratic` dispatching `web` workers to find sources).
  */
 
 import { spawn } from "node:child_process";
@@ -127,8 +129,8 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 
 function buildWorkerTask(task: string): string {
 	return [
-		"You are running as a worker for a parent workflow orchestrator.",
-		"Your final reply is consumed by the orchestrator, not shown directly to the user.",
+		"You are running as a worker for a parent agent.",
+		"Your final reply is consumed by the parent agent, not shown directly to the user.",
 		"Return concise operational information: what happened, important results, artifact paths, blockers, errors, and verification notes.",
 		"The user cannot answer worker questions. Complete the task from the instructions provided, make a clearly stated assumption if safe, or return a concise blocker.",
 		"Do not add user-facing preamble, closing text, or broad process narration.",
@@ -148,7 +150,7 @@ function workerCatalog(): string | null {
 	return [
 		"## Available Top-Level Capability Agents",
 		"",
-		"Use the `subagent` tool to delegate bounded work to these durable capability presets. Workers reply to the orchestrator, not directly to the user.",
+		"Use the `subagent` tool to delegate bounded work to these durable capability presets. Workers reply to you, not directly to the user.",
 		"",
 		...workers.map((worker) => `### ${worker}\n\nPreset worker launched with \`pi --preset ${worker}\`.`),
 	].join("\n");
@@ -391,13 +393,26 @@ const SubagentParams = Type.Object({
 });
 
 function isErrorResult(result: WorkerResult): boolean {
-	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+	if (result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted") return true;
+	// A length stop or an empty final reply is a failed return even when the
+	// process exits 0: the worker produced no usable value for the parent
+	// (docs/orchestrator-research-report.md, Failure 1).
+	return result.stopReason === "length" || getFinalOutput(result.messages).trim() === "";
+}
+
+function failureReason(result: WorkerResult): string {
+	if (result.exitCode !== 0) return `exit ${result.exitCode}`;
+	if (result.stopReason === "aborted") return "aborted";
+	if (result.stopReason === "error") return "error";
+	if (result.stopReason === "length") return "hit output-token limit";
+	return "empty final reply";
 }
 
 function compactResultLine(result: WorkerResult): string {
 	const output = getFinalOutput(result.messages).trim();
 	const preview = output.length > 240 ? `${output.slice(0, 240)}...` : output;
-	return `[${result.agent}] ${isErrorResult(result) ? "failed" : "completed"}: ${preview || result.stderr || "(no output)"}`;
+	const status = isErrorResult(result) ? `failed (${failureReason(result)})` : "completed";
+	return `[${result.agent}] ${status}: ${preview || result.stderr || "(no output)"}`;
 }
 
 export default function workflowOrchestrator(pi: ExtensionAPI): void {
@@ -471,7 +486,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 					if (isErrorResult(result)) {
 						const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 						return {
-							content: [{ type: "text", text: `Chain stopped at step ${i + 1} (${step.agent}): ${errorMsg}` }],
+							content: [{ type: "text", text: `Chain stopped at step ${i + 1} (${step.agent}, ${failureReason(result)}): ${errorMsg}` }],
 							details: makeDetails("chain")(results),
 							isError: true,
 						};
@@ -515,7 +530,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 				if (isErrorResult(result)) {
 					const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 					return {
-						content: [{ type: "text", text: `Agent ${result.stopReason || "failed"}: ${errorMsg}` }],
+						content: [{ type: "text", text: `Worker failed (${failureReason(result)}): ${errorMsg}` }],
 						details: makeDetails("single")([result]),
 						isError: true,
 					};
@@ -556,7 +571,13 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 				new Text(`${theme.fg("toolTitle", theme.bold("trace"))} ${theme.fg("accent", details.traceRunId)} ${theme.fg("dim", details.traceDir)}`, 0, 0),
 			);
 			for (const worker of details.results) {
-				const status = isErrorResult(worker) ? theme.fg("error", "[error]") : theme.fg("success", "[ok]");
+				// endedAt is unset while the worker is still streaming; an empty reply
+				// only counts as an error once the process has finished.
+				const status = !worker.endedAt
+					? theme.fg("dim", "[running]")
+					: isErrorResult(worker)
+						? theme.fg("error", "[error]")
+						: theme.fg("success", "[ok]");
 				container.addChild(new Spacer(1));
 				container.addChild(new Text(`${status} ${theme.fg("toolTitle", worker.agent)}`, 0, 0));
 				const output = getFinalOutput(worker.messages).trim() || worker.stderr.trim() || "(no output)";

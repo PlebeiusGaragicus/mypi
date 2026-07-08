@@ -183,6 +183,9 @@ export function parsePresetYaml(raw, name, sourceRoot) {
 			case "includeContextFiles":
 				preset.includeContextFiles = parseBoolean(value);
 				break;
+			case "cleanSession":
+				preset.cleanSession = parseBoolean(value);
+				break;
 			case "tools":
 				if (value === "none" || value === "include") preset.tools = value;
 				else preset.tools = value;
@@ -211,6 +214,7 @@ export function mergePreset(base, next) {
 		"model",
 		"thinkingLevel",
 		"includeContextFiles",
+		"cleanSession",
 		"theme",
 		"tools",
 	]) {
@@ -336,6 +340,9 @@ export function composePrompt(eventSystemPrompt, preset) {
 }
 
 export function presetRequiresCleanSession(preset) {
+	// Explicit cleanSession wins; otherwise declaring workers implies a
+	// top-level workflow interpreter, which should start from fresh context.
+	if (typeof preset.cleanSession === "boolean") return preset.cleanSession;
 	return (preset.extensions ?? []).includes("workflow-orchestrator") && (preset.workers ?? []).length > 0;
 }
 

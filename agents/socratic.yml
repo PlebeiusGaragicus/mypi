@@ -16,6 +16,8 @@ prompt:
     Default to connected prose. Avoid decorative markdown, fake profundity, inflated language, generic endings, and chatbot service wrappers.
 
     Before structuring, saving, or refuting any argument, read the how-to-debate skill and follow its workflow. Saved Arguments go in ./arguments/<thesis-slug>.md.
+
+    You can delegate web source-finding to `web` workers through the `subagent` tool, but only when the user clearly asks for help finding, citing, or verifying a source — read the find-sources skill before your first dispatch. You are an interlocutor first: delegation serves the argument and never replaces the dialogue.
   append: Be proactive in reading your skills before assisting the user.
 
 tools: include
@@ -27,5 +29,14 @@ includeTools:
   - write
   - edit
 
+extensions:
+  - workflow-orchestrator
+
+workers:
+  - web
+
+cleanSession: false
+
 skillDirs:
   - shared/skills/how-to-debate
+  - shared/skills/find-sources

@@ -23,7 +23,7 @@ The orchestrator was then told **"Parallel: 4/4 succeeded"**. `isErrorResult()` 
 
 **Consequence.** The draft was synthesized from the surviving secondary sources: an undated Independent Voter Project stats page (3,386,962 total, "44% independent" — inconsistent with current SOS data), a 2021 PSU report about 2018 turnout, and a generic Ballotpedia page. A 2026 question answered with stale, unverifiable numbers, confidently cited. The report *looks* good; the grounding is not.
 
-**Fix (harness, code).** In `isErrorResult`, treat `stopReason === "length"` — and an empty final reply — as an error return. This matches the contract the orchestrator prompt already states: "Nonzero exit, blocker text, missing artifact, or failed validation is an error return." With a truthful `3/4 succeeded`, the orchestrator can note or retry the failed URL, per the program.
+**Fix (harness, code — shipped).** In `isErrorResult`, treat `stopReason === "length"` — and an empty final reply — as an error return. This matches the contract the orchestrator prompt already states: "Nonzero exit, blocker text, missing artifact, or failed validation is an error return." With a truthful `3/4 succeeded`, the orchestrator can note or retry the failed URL, per the program.
 
 ## Failure 2: the orchestrator bloats its own context
 
@@ -60,7 +60,7 @@ The orchestrator was then told **"Parallel: 4/4 succeeded"**. `isErrorResult()` 
 
 ## Fix priority
 
-1. `isErrorResult` length/empty-reply handling (code, small, unblocks everything downstream — an orchestrator can't manage what it's lied to about).
+1. ~~`isErrorResult` length/empty-reply handling~~ — **shipped**: length stops and empty final replies now count as failures, and failure lines include the reason (exit code, output-token limit, aborted, empty reply).
 2. Collection validation gate in deepresearch (prompt).
 3. Collector PDF/document handling in deepresearch (prompt).
 4. Orchestrator context-discipline rules in workflow.yml (prompt).

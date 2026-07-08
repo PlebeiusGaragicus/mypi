@@ -67,6 +67,23 @@ assert.equal(effectivePromptBase(merged), "pi");
 assert.deepEqual(effectiveTools(merged), ["read", "bash", "questionnaire", "subagent"]);
 assert.equal(presetRequiresCleanSession(merged), true);
 
+const conversationalDelegator = parsePresetYaml(
+	`
+description: Conversational preset with workers
+cleanSession: false
+extensions:
+  - workflow-orchestrator
+workers:
+  - web
+`,
+	"delegator",
+	"/pkg",
+);
+
+assert.equal(conversationalDelegator.cleanSession, false);
+assert.equal(presetRequiresCleanSession(conversationalDelegator), false);
+assert.equal(presetRequiresCleanSession(mergePreset(base, conversationalDelegator)), false);
+
 const raw = parsePresetYaml(
 	`
 description: Raw

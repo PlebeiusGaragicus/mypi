@@ -15,6 +15,7 @@ export interface PresetDefinition {
 	model?: string;
 	thinkingLevel?: string;
 	includeContextFiles?: boolean;
+	cleanSession?: boolean;
 	theme?: string;
 	environment?: Record<string, string>;
 	prompt?: PresetPrompt;

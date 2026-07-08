@@ -17,6 +17,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 ### Added
 
 - Added the `socratic` preset and shared `how-to-debate` skill (promoted from `EXAMPLE/SOCRATIC`): stress-test a thesis via elenchus, then structure it into evidence-based `SocraticArgument` markdown under `./arguments/<thesis-slug>.md`.
+- Opened `subagent` delegation to conversational presets: a new `cleanSession` preset field lets presets that declare workers opt out of the workflow clean-session rule. `socratic` now dispatches `web` workers for source-finding, guided by the new shared `find-sources` skill (delegation only on a clear user request; citation-ready return contract).
 - Added `--debug-system-prompt` for printing the effective preset system prompt before a model call.
 - Added `/debug-system-prompt` to show the effective system prompt in-session (same as Ctrl+Q; requires at least one turn).
 - Added path-promoted `btc-price` CLI for the btc-price skill (CoinGecko spot quotes).
@@ -49,6 +50,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Fixed
 
+- Fixed `subagent` counting dead workers as successes: a worker that hit the output-token ceiling (`stopReason: "length"`) or exited with an empty final reply was reported as "completed" (deepresearch bench Failure 1). Both now count as failures, and failure lines state the reason (exit code, output-token limit, aborted, empty reply).
 - Fixed `--debug-system-prompt` printing pi's vanilla prompt instead of the preset's composed prompt: the handler lived in `mypi-branding` (loaded first) and captured the prompt before the preset extension rewrote it. It is now a standalone extension loaded last, so dumps include preset composition and the workflow worker catalog, and it reports the real active preset name instead of `null`.
 - Fixed the `subagent` and `questionnaire` tools rejecting calls with "not enabled for the active preset" even when a workflow preset was active: Pi loads each extension with an isolated module graph, so the preset extension's in-memory activation state was invisible to the tool extensions. Active-preset state now lives on a process-wide global.
 - Fixed the MYPI session header so `pi --preset <name>` activates it without depending on shared in-memory preset state across extensions.

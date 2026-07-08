@@ -14,6 +14,7 @@ Skills are prompt-visible capability packages under `shared/skills/<name>/`. A p
 | `btc-price` | CoinGecko spot price | `btc-price` | `web` |
 | `humanizer` | De-AI prose editing and tone work | — | `write` |
 | `how-to-debate` | Structure debate notes into evidence-based Socratic Arguments under `./arguments/` | — | `socratic` |
+| `find-sources` | Delegate source-finding to `web` workers via `subagent`; citation-ready return contract | — | `socratic` |
 | `workflow-builder` | Authoring conventions for workflow prompts | — | `workflow` |
 | `todo` | Shared todo list | `todo` | (PATH only) |
 | `ntfy` | Push notifications | `ntfy-send` | (PATH only) |

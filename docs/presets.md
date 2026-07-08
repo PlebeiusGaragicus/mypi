@@ -25,7 +25,7 @@ The package ships these presets under `agents/*.yml`:
 | `plato` | Socratic, truth-seeking dialogue persona. | none |
 | `scout` | Read-only repository and directory discovery. | ls, find, grep, read |
 | `write` | Prose and documentation edits without shell access (humanizer skill). | + write, edit |
-| `socratic` | Socratic seminar: stress-test a thesis, then structure it into evidence-based Arguments under `./arguments/` (how-to-debate skill). | + write, edit |
+| `socratic` | Socratic seminar: stress-test a thesis, then structure it into evidence-based Arguments under `./arguments/` (how-to-debate + find-sources skills). Delegates source-finding to `web` workers on request. | + write, edit + subagent |
 | `code` | Code implementation, tests, builds, command execution. Inherits Pi's full coding prompt. | + bash |
 | `web` | Web research, browser automation, screenshots, source extraction. | ls, find, grep, read, bash |
 | `workflow` | Multi-agent orchestrator via `subagent` and `questionnaire`. No shell: it delegates execution to workers, which create their own artifact directories. | ls, find, grep, read, write, edit + subagent |
@@ -40,6 +40,8 @@ When you select a preset, mypi writes a `mypi-preset-state` custom session entry
 
 Workflow presets are the exception: they are designed for clean sessions. If a workflow preset would be restored into a branch with prior user messages, mypi clears the preset state and asks you to run `/new`, then reselect it. See [Workflows](workflows.md).
 
+By default this clean-session rule applies to any preset that declares the `workflow-orchestrator` extension plus a `workers:` list. A conversational preset that merely *delegates* (like `socratic` dispatching `web` workers mid-seminar) opts out with `cleanSession: false`; a preset can also force the rule on with `cleanSession: true`.
+
 ## YAML Shape
 
 Package presets live at `agents/<preset>.yml`:
@@ -51,6 +53,7 @@ provider: openai
 model: gpt-5.5
 thinkingLevel: high
 includeContextFiles: true
+cleanSession: false
 theme: github-dark-default
 
 prompt:
