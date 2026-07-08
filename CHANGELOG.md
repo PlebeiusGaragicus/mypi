@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Changed
 
+- `bench workflow` now streams the orchestrator's progress (assistant text, tool calls, tool results) to the terminal and run.log as the run executes, instead of staying silent until the end. Ctrl-C now stops pi cleanly, records the run as interrupted, and still writes artifacts (a second Ctrl-C force-quits).
 - Capped `subagent` parallel mode at 4 concurrent workers (was 100) to match LM Studio's request concurrency; larger fan-outs batch across successive calls (see docs/proposals.md P2).
 - Consolidated the 16 files under `docs/` into a 9-page MkDocs site (`mkdocs.yml`, Material theme) deployed to GitHub Pages on push to `main` (`.github/workflows/docs.yml`); merged presets/agent-presets/custom-presets/preset-catalog into `presets.md`, the three workflow docs into `workflows.md`, skill-builder into `skills.md`, and runtime-env/bootstrap/commands/validation into `runtime.md`.
 - Moved `FEATURES.md` into the docs site as `docs/features.md`; rewrote it as a concise feature summary.
@@ -45,6 +46,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Fixed
 
+- Fixed the `subagent` and `questionnaire` tools rejecting calls with "not enabled for the active preset" even when a workflow preset was active: Pi loads each extension with an isolated module graph, so the preset extension's in-memory activation state was invisible to the tool extensions. Active-preset state now lives on a process-wide global.
 - Fixed the MYPI session header so `pi --preset <name>` activates it without depending on shared in-memory preset state across extensions.
 - Fixed command argument completions for `/preset` and `/mypi-env-config` so accepting an inline completion does not crash the interactive editor.
 

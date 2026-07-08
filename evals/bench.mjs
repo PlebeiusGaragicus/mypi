@@ -517,13 +517,14 @@ async function cmdWorkflow(argv) {
 	log(`workflow start: ${workflowName} task=${task.number} (${task.section}) model=${model} program=${config.program_path} sha=${config.program_sha256.slice(0, 12)}`);
 	log(`task: ${task.text}`);
 	const prompt = `${programText.trimEnd()}\n\n## User Request\n\n${task.text}\n`;
-	const result = runPiWorkflow({
+	const result = await runPiWorkflow({
 		prompt,
 		preset: config.preset,
 		model,
 		cwd: workspace,
 		sessionDir: path.join(runDir, "session"),
 		artifactDir: path.join(runDir, "artifacts", "orchestrator"),
+		onProgress: log,
 	});
 
 	const runRecord = {
