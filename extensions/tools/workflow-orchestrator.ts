@@ -246,6 +246,7 @@ class TraceManager {
 
 async function runWorker(
 	defaultCwd: string,
+	parentModel: string | undefined,
 	agentName: string,
 	task: string,
 	mode: InvocationMode,
@@ -280,7 +281,13 @@ async function runWorker(
 		return result;
 	}
 
-	const args = ["--mode", "json", "--session-dir", traceManager.traceDir, "--preset", agentName, "-p", buildWorkerTask(task)];
+	// Workers inherit the parent session's model: a fresh `pi` process would
+	// otherwise fall back to the global default model, so orchestrator and
+	// workers could silently run different models (and thrash model loads on
+	// a memory-constrained server). Preset model pins still win via activate().
+	const args = ["--mode", "json", "--session-dir", traceManager.traceDir, "--preset", agentName];
+	if (parentModel) args.push("--model", parentModel);
+	args.push("-p", buildWorkerTask(task));
 	const currentResult = baseResult;
 	const emitUpdate = () => {
 		onUpdate?.({
@@ -432,6 +439,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 					results,
 				});
 
+			const parentModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : undefined;
 			const hasChain = (params.chain?.length ?? 0) > 0;
 			const hasTasks = (params.tasks?.length ?? 0) > 0;
 			const hasSingle = Boolean(params.agent && params.task);
@@ -450,6 +458,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 					const step = params.chain[i];
 					const result = await runWorker(
 						ctx.cwd,
+						parentModel,
 						step.agent,
 						step.task.replace(/\{previous\}/g, previousOutput),
 						"chain",
@@ -485,7 +494,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 				}
 				const results = await Promise.all(
 					params.tasks.map((task) =>
-						runWorker(ctx.cwd, task.agent, task.task, "parallel", signal, undefined, makeDetails("parallel"), traceManager),
+						runWorker(ctx.cwd, parentModel, task.agent, task.task, "parallel", signal, undefined, makeDetails("parallel"), traceManager),
 					),
 				);
 				const successCount = results.filter((result) => !isErrorResult(result)).length;
@@ -502,7 +511,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 			}
 
 			if (params.agent && params.task) {
-				const result = await runWorker(ctx.cwd, params.agent, params.task, "single", signal, onUpdate, makeDetails("single"), traceManager);
+				const result = await runWorker(ctx.cwd, parentModel, params.agent, params.task, "single", signal, onUpdate, makeDetails("single"), traceManager);
 				if (isErrorResult(result)) {
 					const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 					return {

@@ -38,8 +38,10 @@ If a workflow preset is restored into a branch with existing user messages, mypi
 Each `subagent` call launches a worker as a fresh process from the parent's working directory:
 
 ```text
-pi --preset <worker> -p "<task>"
+pi --preset <worker> --model <parent session's model> -p "<task>"
 ```
+
+Workers inherit the parent session's model rather than the global default, so an orchestrator run on a non-default model (e.g. a bench `--model` override) keeps its whole worker fleet on that model instead of thrashing loads between two models on a memory-constrained server. A preset that pins its own `provider`/`model` still overrides this at activation.
 
 This is the core context-isolation move for weak local models: every worker starts with a clean context containing only its preset prompt and the delegated task. Workers receive an operational wrapper explaining that they report to the orchestrator, not the user, and should return concise status, artifact paths, blockers, errors, and verification notes. Workers cannot spawn their own subagents — delegation depth is exactly one level, which keeps multi-agent runs predictable on weaker models.
 

@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Changed
 
+- `subagent` workers now inherit the parent session's model instead of falling back to the global default, so an orchestrator running a non-default model (e.g. `bench workflow --model ...`) keeps orchestrator and workers on the same model. Preset-pinned models still override at activation.
 - Removed `bash` from the `workflow` preset: the orchestrator has no shell and must delegate command execution to `code` and live web access to `web`, closing the gap where it could curl the web itself instead of spawning workers. Artifact directories are created by the workers that write into them (the `write` tool auto-creates parent directories); the deepresearch program's preflight and collector contract now say so explicitly.
 - `bench workflow` now streams the orchestrator's progress (assistant text, tool calls, tool results) to the terminal and run.log as the run executes, instead of staying silent until the end. Ctrl-C now stops pi cleanly, records the run as interrupted, and still writes artifacts (a second Ctrl-C force-quits).
 - Capped `subagent` parallel mode at 4 concurrent workers (was 100) to match LM Studio's request concurrency; larger fan-outs batch across successive calls (see docs/proposals.md P2).
@@ -47,6 +48,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Fixed
 
+- Fixed `--debug-system-prompt` printing pi's vanilla prompt instead of the preset's composed prompt: the handler lived in `mypi-branding` (loaded first) and captured the prompt before the preset extension rewrote it. It is now a standalone extension loaded last, so dumps include preset composition and the workflow worker catalog, and it reports the real active preset name instead of `null`.
 - Fixed the `subagent` and `questionnaire` tools rejecting calls with "not enabled for the active preset" even when a workflow preset was active: Pi loads each extension with an isolated module graph, so the preset extension's in-memory activation state was invisible to the tool extensions. Active-preset state now lives on a process-wide global.
 - Fixed the MYPI session header so `pi --preset <name>` activates it without depending on shared in-memory preset state across extensions.
 - Fixed command argument completions for `/preset` and `/mypi-env-config` so accepting an inline completion does not crash the interactive editor.

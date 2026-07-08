@@ -27,7 +27,8 @@
       "extensions/mypi-branding/index.ts",
       "extensions/preset/index.ts",
       "extensions/tools/workflow-orchestrator.ts",
-      "extensions/tools/questionnaire.ts"
+      "extensions/tools/questionnaire.ts",
+      "extensions/debug-system-prompt/index.ts"
     ],
     "skills": [],
     "prompts": [],
