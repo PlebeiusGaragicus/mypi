@@ -347,20 +347,31 @@ export async function handleWriteCommand(
       }
 
       const resolved = await session.resolveRef(selector);
-      try {
-        if ('locator' in resolved) {
-          await resolved.locator.click({ timeout: 5000 });
-        } else {
-          await target.locator(resolved.selector).click({ timeout: 5000 });
-        }
-      } catch (err: any) {
-        // Enhanced error guidance: clicking <option> elements always fails (not visible / timeout)
-        const isOption = 'locator' in resolved
-          ? await resolved.locator.evaluate(el => el.tagName === 'OPTION').catch(() => false)
-          : await target.locator(resolved.selector).evaluate(
-              el => el.tagName === 'OPTION'
-            ).catch(() => false);
+      const clickTarget = 'locator' in resolved ? resolved.locator : target.locator(resolved.selector);
+
+      // Clicking <option> elements always fails (hidden inside closed <select>).
+      // Detect it BEFORE clicking: the 5s actionability polling on a hidden
+      // option can wedge the renderer on some Linux runners, and a post-click
+      // evaluate hangs once that happens. count() doesn't wait, so this adds
+      // no latency for elements that haven't appeared yet.
+      if (await clickTarget.count().catch(() => 0) > 0) {
+        const isOption = await clickTarget
+          .first()
+          .evaluate(el => el.tagName === 'OPTION', undefined, { timeout: 1000 })
+          .catch(() => false);
         if (isOption) {
+          throw new Error(
+            `Cannot click <option> elements. Use 'browse select <parent-select> <value>' instead of 'click' for dropdown options.`
+          );
+        }
+      }
+
+      try {
+        await clickTarget.click({ timeout: 5000 });
+      } catch (err: any) {
+        // Backup for options that attach after the count() check: playwright's
+        // error text names the resolved element, so no page roundtrip needed.
+        if (/resolved to <option\b/i.test(err?.message ?? '')) {
           throw new Error(
             `Cannot click <option> elements. Use 'browse select <parent-select> <value>' instead of 'click' for dropdown options.`
           );

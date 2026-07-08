@@ -1224,6 +1224,12 @@ export class BrowserManager {
 
   // ─── Console/Network/Dialog/Ref Wiring ────────────────────
   private wirePageEvents(page: Page) {
+    // Renderer crash → loud diagnostic. Without this, every subsequent action
+    // on the page just times out with no hint of the root cause.
+    page.on('crash', () => {
+      console.error(`[browse] FATAL: page renderer crashed (url=${page.url()}). Subsequent commands on this tab will time out — close the tab or reload.`);
+    });
+
     // Track tab close — remove from pages and sessions maps, switch to another tab
     page.on('close', () => {
       for (const [id, p] of this.pages) {
