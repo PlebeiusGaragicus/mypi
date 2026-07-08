@@ -33,17 +33,17 @@ cases:
   - id: skibidi-ohio-rizz
     term: Skibidi Ohio Rizz
     question: |
-      An insult used to describe someone who is awkward or embarrassing when trying to flirt.
       In context of internet slang, what does "skibidi Ohio rizz" usually imply?
     expected_answer: |
+      An insult used to describe someone who is awkward or embarrassing when trying to flirt.
       A satisfactory answer should recognize this as a layered slang insult rather than a literal phrase. It should connect "Ohio" with weird/cringey and "rizz" with flirting or charm, yielding awkward or embarrassing flirting.
 
   - id: sigma
     term: Sigma
     question: |
-      A "lone wolf" or a very cool, successful person (often used sarcastically or for "alpha males").
       In context of internet slang, what does "sigma" mean when describing a person?
     expected_answer: |
+      A "lone wolf" or a very cool, successful person (often used sarcastically or for "alpha males").
       A satisfactory answer should mention the lone-wolf or independent-successful persona and ideally note that the term is often ironic or tied to alpha-male meme culture.
 
   - id: fanum-tax

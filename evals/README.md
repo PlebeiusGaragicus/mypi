@@ -18,6 +18,18 @@ Everything runs locally against your configured providers (LM Studio /
 Ollama / remote). Nothing here touches GitHub Actions, and run results are
 gitignored — only case suites, variants, and graders are tracked.
 
+## Quick start
+
+```sh
+node evals/bench.mjs        # interactive menu (or: npm run bench)
+```
+
+The menu lists every benchmark with case counts, offers your configured
+models from `~/.pi/agent/models.json`, walks through thinking modes,
+variants, judge model (for judged benchmarks), samples, and limit, shows an
+estimated call count, and prints the equivalent `bench run` command before
+launching — so every menu run is reproducible as a one-liner afterward.
+
 ## The loop
 
 ```sh
@@ -39,6 +51,7 @@ hidden. A prompt change is only an improvement if the compare says so.
 ## Commands
 
 ```sh
+node evals/bench.mjs                               # interactive menu
 node evals/bench.mjs run <benchmark> --models <id,...> [options]
 node evals/bench.mjs report <run-dir>              # regenerate report.md from artifacts
 node evals/bench.mjs compare <run-dir-a> <run-dir-b>

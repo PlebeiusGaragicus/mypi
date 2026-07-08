@@ -427,15 +427,29 @@ function cmdCompare(argv) {
 }
 
 const USAGE = `Usage:
+  node evals/bench.mjs                  interactive menu (pick benchmark, models, params)
   node evals/bench.mjs run <benchmark> --models <id,...> [--thinking off,...] [--variants id,...]
+                                       [--judge-model id] [--judge-thinking level]
                                        [--samples N] [--limit N] [--run-id id] [--resume] [--dry-run]
   node evals/bench.mjs report <run-dir>
   node evals/bench.mjs compare <run-dir-a> <run-dir-b>`;
+
+async function cmdMenu() {
+	const { runMenu } = await import("./lib/menu.mjs");
+	let argv;
+	try {
+		argv = await runMenu(EVALS_DIR);
+	} catch (error) {
+		fail(error.message);
+	}
+	await cmdRun(argv.slice(1));
+}
 
 const [command, ...rest] = process.argv.slice(2);
 if (command === "run") await cmdRun(rest);
 else if (command === "report") cmdReport(rest);
 else if (command === "compare") cmdCompare(rest);
+else if (command === "menu" || (!command && process.stdin.isTTY)) await cmdMenu();
 else {
 	console.error(USAGE);
 	process.exit(command ? 1 : 0);
