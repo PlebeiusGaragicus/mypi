@@ -97,13 +97,18 @@ Artifacts land in `evals/runs/<benchmark>/<run-id>/` (gitignored): per-item
 `answer/` and `judge/` dirs (`args.json`, `output.json`, `answer.txt` /
 `judge.txt`, `prompt.txt`, `system-prompt.md`) plus `parsed.json`, and
 run-level `results.jsonl`, `manifest.jsonl`, `run.log`, `config.json`, and
-`report.md` with mean scores per model/variant, per-tag slices, and every
-failure with its diagnosis.
+two reports: `report.md` (mean scores per model/variant, per-tag slices,
+every failure with its diagnosis) and `report.html` — a self-contained page
+with the same tables plus a filterable item browser (by model, variant, tag,
+pass/fail/error, free-text search) where each item expands to show the
+question, the full answer, and the judge's verdict. Open it straight from
+disk; there are no external assets.
 
 ## Benchmark layout
 
 ```
 evals/benchmarks/<name>/
+  README.md          # what the benchmark tests, rubric, tags, how to run it
   cases.yml          # cases: id, question, tags, + expected / judge_hint / etc.
   variants.yml       # system-prompt variants: preset: <agent> or inline text
   grader.mjs         # export function grade({caseData, answer, judgeText})

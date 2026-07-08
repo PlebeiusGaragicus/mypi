@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadYamlFile } from "./lib/yaml.mjs";
 import { runPi } from "./lib/pi.mjs";
 import { buildCompare, buildReport, collectRecords } from "./lib/report.mjs";
+import { buildHtml } from "./lib/html.mjs";
 import { parsePresetYaml } from "../shared/presets/runtime.mjs";
 
 const EVALS_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -393,6 +394,7 @@ async function cmdRun(argv) {
 	const reportPath = writeReport(runDir);
 	log(`run complete: attempted=${items.length - skipped} skipped=${skipped} failed=${failed}`);
 	console.log(`\nReport: ${reportPath}`);
+	console.log(`HTML:   ${path.join(runDir, "report.html")}`);
 	process.exit(failed ? 1 : 0);
 }
 
@@ -403,6 +405,7 @@ function writeReport(runDir) {
 	const records = collectRecords(runDir);
 	const reportPath = path.join(runDir, "report.md");
 	writeFileSync(reportPath, buildReport(config, records));
+	writeFileSync(path.join(runDir, "report.html"), buildHtml(config, records));
 	return reportPath;
 }
 
