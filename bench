@@ -1,0 +1,5 @@
+#!/bin/sh
+# mypi eval bench launcher. Run `./bench` for the interactive menu, or pass
+# a subcommand directly (run, workflow, feedback, retro, report, compare,
+# clean). See evals/README.md.
+exec node "$(dirname "$0")/evals/bench.mjs" "$@"

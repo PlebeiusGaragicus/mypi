@@ -428,24 +428,6 @@ function loadRun(runDirArg) {
 // workflow program, archive the exact program text, and attach a human
 // verdict. The program revision is the variant under test.
 
-function loadTasks(name) {
-	const tasksPath = path.join(EVALS_DIR, "tasks", `${name}.txt`);
-	if (!existsSync(tasksPath)) fail(`no task library: ${tasksPath}`);
-	const tasks = [];
-	let section = "";
-	for (const line of readFileSync(tasksPath, "utf8").split("\n")) {
-		const trimmed = line.trim();
-		if (!trimmed) continue;
-		if (trimmed.startsWith("#")) {
-			section = trimmed.replace(/^#+\s*/, "");
-			continue;
-		}
-		tasks.push({ number: tasks.length + 1, section, text: trimmed });
-	}
-	if (!tasks.length) fail(`${tasksPath} contains no tasks`);
-	return tasks;
-}
-
 function humanVerdictRecord(config, { score, note }) {
 	return {
 		benchmark: config.benchmark,
@@ -489,7 +471,13 @@ async function cmdWorkflow(argv) {
 	const programPath = path.resolve(options.program ?? path.join(REPO_ROOT, "shared", "prompts", "workflow", `${workflowName}.md`));
 	if (!existsSync(programPath)) fail(`no workflow program: ${programPath}`);
 	const programText = readFileSync(programPath, "utf8");
-	const tasks = loadTasks(workflowName);
+	const { loadTasks } = await import("./lib/tasks.mjs");
+	let tasks;
+	try {
+		tasks = loadTasks(EVALS_DIR, workflowName);
+	} catch (error) {
+		fail(error.message);
+	}
 
 	let task;
 	if (options.task) {
@@ -769,26 +757,31 @@ const USAGE = `Usage:
   node evals/bench.mjs clean [--yes]`;
 
 async function cmdMenu() {
-	const { runMenu } = await import("./lib/menu.mjs");
+	const { mainMenu } = await import("./lib/menu.mjs");
 	let argv;
 	try {
-		argv = await runMenu(EVALS_DIR);
+		argv = await mainMenu(EVALS_DIR);
 	} catch (error) {
 		fail(error.message);
 	}
-	await cmdRun(argv.slice(1));
+	console.log(`\n> node evals/bench.mjs ${argv.map((arg) => (/[\s"']/.test(arg) ? JSON.stringify(arg) : arg)).join(" ")}\n`);
+	await dispatch(argv[0], argv.slice(1));
+}
+
+async function dispatch(command, rest) {
+	if (command === "run") await cmdRun(rest);
+	else if (command === "workflow") await cmdWorkflow(rest);
+	else if (command === "feedback") cmdFeedback(rest);
+	else if (command === "retro") await cmdRetro(rest);
+	else if (command === "clean") await cmdClean(rest);
+	else if (command === "report") cmdReport(rest);
+	else if (command === "compare") cmdCompare(rest);
+	else if (command === "menu" || (!command && process.stdin.isTTY)) await cmdMenu();
+	else {
+		console.error(USAGE);
+		process.exit(command ? 1 : 0);
+	}
 }
 
 const [command, ...rest] = process.argv.slice(2);
-if (command === "run") await cmdRun(rest);
-else if (command === "workflow") await cmdWorkflow(rest);
-else if (command === "feedback") cmdFeedback(rest);
-else if (command === "retro") await cmdRetro(rest);
-else if (command === "clean") await cmdClean(rest);
-else if (command === "report") cmdReport(rest);
-else if (command === "compare") cmdCompare(rest);
-else if (command === "menu" || (!command && process.stdin.isTTY)) await cmdMenu();
-else {
-	console.error(USAGE);
-	process.exit(command ? 1 : 0);
-}
+await dispatch(command, rest);

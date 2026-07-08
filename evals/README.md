@@ -23,14 +23,26 @@ gitignored — only case suites, variants, and graders are tracked.
 ## Quick start
 
 ```sh
-node evals/bench.mjs        # interactive menu (or: npm run bench)
+./bench          # from the repo root (or: npm run bench, node evals/bench.mjs)
 ```
 
-The menu lists every benchmark with case counts, offers your configured
-models from `~/.pi/agent/models.json`, walks through thinking modes,
-variants, judge model (for judged benchmarks), samples, and limit, shows an
-estimated call count, and prints the equivalent `bench run` command before
-launching — so every menu run is reproducible as a one-liner afterward.
+That's the whole interface: a home menu covering everything —
+
+1. **Run a benchmark** — pick a suite, your models (listed from
+   `~/.pi/agent/models.json`), thinking modes, variants, judge model for
+   judged suites, samples/limit; see an estimated call count; launch.
+2. **Run a workflow task** — pick the orchestrator model and one task from
+   the library; score the result when it finishes.
+3. **Score a workflow run** — record your 0–2 verdict after reading the
+   deliverable.
+4. **Retro a trace** — procedural checks over a workflow's subagent trace.
+5. **Compare two runs** — did a prompt change actually help?
+6. **Rebuild a report** / 7. **Clean up**.
+
+Every menu flow prints the equivalent `bench <command>` one-liner before it
+launches, so anything you do interactively is reproducible as a direct
+command afterward. The subcommands below are that same surface, for
+scripting.
 
 ## The loop
 
@@ -53,14 +65,14 @@ hidden. A prompt change is only an improvement if the compare says so.
 ## Commands
 
 ```sh
-node evals/bench.mjs                               # interactive menu
-node evals/bench.mjs run <benchmark> --models <id,...> [options]
-node evals/bench.mjs workflow <name> --model <id> [--task N] [--program path]
-node evals/bench.mjs feedback <run-dir> --score <0-2> [--note text]
-node evals/bench.mjs retro <trace-dir> [--judge-model id]
-node evals/bench.mjs report <run-dir>              # regenerate report.md/.html from artifacts
-node evals/bench.mjs compare <run-dir-a> <run-dir-b>
-node evals/bench.mjs clean [--yes]                 # delete all run artifacts
+./bench                                  # interactive menu
+./bench run <benchmark> --models <id,...> [options]
+./bench workflow <name> --model <id> [--task N] [--program path]
+./bench feedback <run-dir> --score <0-2> [--note text]
+./bench retro <trace-dir> [--judge-model id]
+./bench report <run-dir>                 # regenerate report.md/.html from artifacts
+./bench compare <run-dir-a> <run-dir-b>
+./bench clean [--yes]                    # delete all run artifacts
 ```
 
 Run options: `--thinking off,low,...` (matrix over each model), `--variants
