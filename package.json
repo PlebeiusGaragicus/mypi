@@ -16,6 +16,7 @@
     "presets:debug-system-prompts": "bash scripts/debug-system-prompt.sh",
     "presets:test": "node scripts/test-presets.mjs",
     "runtime-env:test": "node scripts/test-runtime-env.mjs",
+    "bench": "node evals/bench.mjs",
     "browser:install": "cd utilities/browser-runtime && bun install",
     "browser:build": "cd utilities/browser-runtime && bun run build",
     "browser:test": "cd utilities/browser-runtime && bun test",

@@ -103,3 +103,72 @@ Two places spend context on text that doesn't earn it, which matters most on sma
 - Or give `code` a worker variant (`code-worker.yml`) with `includeContextFiles: false` for workflow use, keeping full context for interactive sessions.
 
 The split is the better first move: it helps every repo consumer of AGENTS.md, not just workflows, and requires no preset changes.
+
+---
+
+## P6 — Evals: prompt iteration, trace retrospectives, and orchestrator comparison
+
+**Status: phase 1 implemented** (`evals/` harness: deterministic benchmarks, `classifier-labels` suite, `bench compare` — see [evals/README.md](https://github.com/PlebeiusGaragicus/mypi/blob/main/evals/README.md)). **Phases 2–5 open.**
+
+mypi's presets and workflow prompts are currently tuned by feel. This proposal adds an `evals/` harness so a prompt change can be judged by numbers: run a fixed case suite before and after, compare, keep the change only if it measurably improved. The architecture is ported from the `EXAMPLE/pi-bench` harness (config-per-run, full artifact preservation, judge-with-hint templates, strict `Score:/Description:` parsing, resumable manifests) — the architecture, not the code, which carries dead paths and a non-functioning copied `evals/` shell script.
+
+**End goal (north star, not phase 1):** an agent runs an eval suite, reads the report, finds errors in the traces, proposes prompt fixes, applies them, and reruns — a closed prompt-improvement loop. Everything below is sequenced to get there in small steps.
+
+**Explicitly out of scope:** GitHub Actions. Evals run locally against the LM Studio/Ollama homelab. Results are not committed; only case suites, judge templates, and run configs are tracked.
+
+### Three eval types, one harness
+
+1. **Benchmark evals (single-turn).** A case suite runs through the matrix `case × model × reasoning × system_prompt_variant`, where the prompt-variant dimension holds candidate preset prompts. Two grader tiers per benchmark:
+    - *Deterministic:* exact/regex match, no judge. First target: `classifier` (must emit a valid label — cheap, objective, and validates the harness end-to-end).
+    - *Judged:* an LLM judge scores 0–2 against a per-case `judge_hint` explaining what a good answer must do. Targets: `judge`, `chat`, `write` preset prompts. The pi-bench judge-template discipline carries over verbatim: per-case hints, anti-gaming rules (generic hedging doesn't count), "do not charitably reinterpret," behavioral rubric.
+
+2. **Trace retrospectives.** Input is an existing `.pi/subagent-traces/<run-id>/` directory (`manifest.json` + per-worker session JSONL). Two grader tiers again:
+    - *Scripted checks (deterministic):* invalid tool-call arguments, error returns, retry loops, workers that exceeded the parallel cap, `{previous}` blowups, empty worker replies, phase skips against `plan.md` if P1 lands. These are jq/grep-able facts, no model needed.
+    - *Judged dimensions:* instruction following, delegation quality (right agent for the task, side-effects declared), and loop/rambling detection — scored per session by a judge given the worker's preset prompt and its transcript.
+    A retro run emits the same record shape as a benchmark run (`score`, `description`, `status`, tags), so reporting and comparison are shared.
+
+3. **Orchestrator comparison.** A fixed suite of workflow tasks is run once per local model *as the orchestrator*, producing one trace per (task, model). The trace retrospective then scores each trace, and the report groups by orchestrator model. This answers "which of my local models is the best orchestrator" with the same machinery — no new eval type, just a driver that varies the orchestrator model over a task list.
+
+### What gets ported from pi-bench, what gets fixed
+
+Keep: run-config contract (one `config.yml` per run, relative paths, prompt text SHA-256 pinned), artifact-per-item layout, append-only `manifest.jsonl` with resume, errors as first-class result records, controlled model inputs (`--mode json --no-tools --no-skills --no-prompt-templates --no-context-files --system-prompt ...` for benchmark calls), markdown report generation.
+
+Fix (the gaps that keep pi-bench a toy):
+
+- **`samples: N` per matrix cell.** N=1 tells you nothing about a stochastic model. Default 3 for judged evals.
+- **Tag slicing.** Every case carries `tags`; reports break scores out per tag so "which failure modes did the prompt change fix" is answerable.
+- **`bench compare <run-a> <run-b>`.** Per-case score deltas between two runs, flagging regressions and improvements separately. This is the primary tool of the prompt-iteration loop — a mean going up while three cases regress is a fail, and only a per-case diff shows it.
+- No plots initially, no matplotlib; markdown tables only.
+
+Language: Node `.mjs` under `scripts/`/`evals/`, matching the repo's existing zero-runtime-dependency script conventions — this is a port of the design, not the Python.
+
+### Layout
+
+```text
+evals/
+  README.md
+  benchmarks/
+    classifier-labels/            # phase 1: deterministic
+      cases.yml                   # id, question, expected, tags
+      grader.mjs                  # exact-match grader
+    judge-rubric/                 # phase 2: judged
+      cases.yml                   # id, question, judge_hint, tags
+      judge-template.md
+  retro/
+    checks.mjs                    # scripted trace checks
+    judge-template.md             # per-session judged dimensions
+  tasks/
+    orchestrator-suite.yml        # phase 4: fixed workflow tasks
+  runs/                           # gitignored
+    <benchmark>/<run-id>/config.yml + artifacts + report.md
+```
+
+### Phases
+
+1. **Harness core + deterministic benchmark.** Runner, matrix expansion, artifacts, resume, report, `bench compare`, and the `classifier-labels` suite (~20 cases). Proves the loop: edit `classifier.yml`, rerun, compare.
+2. **Judged benchmark.** Judge call + `Score:/Description:` parser + one suite for the `judge` preset (~20 cases with hints). Judge model is pinned in config and should differ from the answer model where possible.
+3. **Trace retrospective.** `bench retro <trace-dir>` runs scripted checks, then judged dimensions per worker session, and writes the standard report. Works on any existing trace — immediately useful for debugging workflow runs.
+4. **Orchestrator comparison.** Driver that runs `tasks/orchestrator-suite.yml` once per configured model as orchestrator, then invokes the phase-3 retro on each trace and emits a grouped comparison report.
+5. **Close the loop.** An eval-runner skill/agent: run suite → read report + compare against baseline run → inspect failing artifacts → propose a prompt edit (as a diff, for human approval initially) → rerun → report the delta. Only worth building once phases 1–3 have made "run and compare" a one-command operation.
+
+**Open questions:** whether the judge should run through `pi` (uniform, uses provider config) or hit the OpenAI-compatible endpoint directly (fewer moving parts); and whether retro judged dimensions score per-session or per-worker-task when a session contains several. Lean `pi` and per-session to start.

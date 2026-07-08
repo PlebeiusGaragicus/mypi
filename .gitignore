@@ -18,3 +18,6 @@ utilities/browser-runtime/node_modules
 utilities/browser-runtime/dist
 
 EXAMPLE/
+
+# eval run artifacts (case suites and graders are tracked; results are not)
+evals/runs/
