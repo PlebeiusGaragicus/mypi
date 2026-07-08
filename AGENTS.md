@@ -32,3 +32,5 @@ mypi-owned runtime values (API keys, service URLs, TTS WPM) live in `~/.pi/mypi/
 ## Validation
 
 Run `npm run presets:check` and `npm run presets:test` after touching `agents/*.yml` or `shared/presets/`; `npm run runtime-env:test` after touching `shared/runtime-env/`. Regenerate the system-prompt dumps with `npm run presets:debug-system-prompts` after changing preset YAML or shared prompts.
+
+The browser-runtime test suite (`cd utilities/browser-runtime && bun test test/`) runs **locally only** — never in GitHub Actions. The tests drive a real Chromium and wedge on GitHub runners (renderer freeze, not reproducible elsewhere). CI's "Browser runtime checks" job only compiles the runtime; do not add `bun test` back to it. Run the suite locally after touching `utilities/browser-runtime`.

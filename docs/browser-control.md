@@ -27,3 +27,14 @@ The skill docs explain the command surface and browser workflow. Presets that in
 ## Runtime Build
 
 The browser runtime lives under `utilities/browser-runtime`. Package scripts provide install, build, dev, and test commands for that runtime.
+
+## Testing
+
+The runtime's test suite launches a real Chromium via Playwright and runs **locally only**:
+
+```bash
+cd utilities/browser-runtime
+bun test test/
+```
+
+The suite is deliberately excluded from GitHub Actions: Chromium-driven tests wedge on GitHub runners (a renderer freeze during click actionability polling that does not reproduce in local Linux containers), cascading dozens of downstream tests into timeouts. CI's "Browser runtime checks" job compiles the runtime (`bun run build`) but does not run tests — keep it that way, and run the suite locally after changing anything under `utilities/browser-runtime`.
