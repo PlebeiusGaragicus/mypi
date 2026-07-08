@@ -25,6 +25,7 @@ The package ships these presets under `agents/*.yml`:
 | `plato` | Socratic, truth-seeking dialogue persona. | none |
 | `scout` | Read-only repository and directory discovery. | ls, find, grep, read |
 | `write` | Prose and documentation edits without shell access (humanizer skill). | + write, edit |
+| `socratic` | Socratic seminar: stress-test a thesis, then structure it into evidence-based Arguments under `./arguments/` (how-to-debate skill). | + write, edit |
 | `code` | Code implementation, tests, builds, command execution. Inherits Pi's full coding prompt. | + bash |
 | `web` | Web research, browser automation, screenshots, source extraction. | ls, find, grep, read, bash |
 | `workflow` | Multi-agent orchestrator via `subagent` and `questionnaire`. No shell: it delegates execution to workers, which create their own artifact directories. | ls, find, grep, read, write, edit + subagent |

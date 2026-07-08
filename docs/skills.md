@@ -13,6 +13,7 @@ Skills are prompt-visible capability packages under `shared/skills/<name>/`. A p
 | `congress-search` | congress.gov search and fetch | `congress-search`, `congress-fetch`, `congress-api` | `web` |
 | `btc-price` | CoinGecko spot price | `btc-price` | `web` |
 | `humanizer` | De-AI prose editing and tone work | — | `write` |
+| `how-to-debate` | Structure debate notes into evidence-based Socratic Arguments under `./arguments/` | — | `socratic` |
 | `workflow-builder` | Authoring conventions for workflow prompts | — | `workflow` |
 | `todo` | Shared todo list | `todo` | (PATH only) |
 | `ntfy` | Push notifications | `ntfy-send` | (PATH only) |

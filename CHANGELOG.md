@@ -16,6 +16,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Added
 
+- Added the `socratic` preset and shared `how-to-debate` skill (promoted from `EXAMPLE/SOCRATIC`): stress-test a thesis via elenchus, then structure it into evidence-based `SocraticArgument` markdown under `./arguments/<thesis-slug>.md`.
 - Added `--debug-system-prompt` for printing the effective preset system prompt before a model call.
 - Added `/debug-system-prompt` to show the effective system prompt in-session (same as Ctrl+Q; requires at least one turn).
 - Added path-promoted `btc-price` CLI for the btc-price skill (CoinGecko spot quotes).
