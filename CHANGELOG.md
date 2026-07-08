@@ -30,6 +30,7 @@ This project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) 
 
 ### Changed
 
+- Removed `bash` from the `workflow` preset: the orchestrator has no shell and must delegate command execution to `code` and live web access to `web`, closing the gap where it could curl the web itself instead of spawning workers. Artifact directories are created by the workers that write into them (the `write` tool auto-creates parent directories); the deepresearch program's preflight and collector contract now say so explicitly.
 - `bench workflow` now streams the orchestrator's progress (assistant text, tool calls, tool results) to the terminal and run.log as the run executes, instead of staying silent until the end. Ctrl-C now stops pi cleanly, records the run as interrupted, and still writes artifacts (a second Ctrl-C force-quits).
 - Capped `subagent` parallel mode at 4 concurrent workers (was 100) to match LM Studio's request concurrency; larger fan-outs batch across successive calls (see docs/proposals.md P2).
 - Consolidated the 16 files under `docs/` into a 9-page MkDocs site (`mkdocs.yml`, Material theme) deployed to GitHub Pages on push to `main` (`.github/workflows/docs.yml`); merged presets/agent-presets/custom-presets/preset-catalog into `presets.md`, the three workflow docs into `workflows.md`, skill-builder into `skills.md`, and runtime-env/bootstrap/commands/validation into `runtime.md`.

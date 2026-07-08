@@ -12,7 +12,7 @@ Use top-level capability agents to produce a citation-backed research artifact: 
 
 ## Execution Graph
 
-1. Preflight parses inputs and initializes artifact directories.
+1. Preflight parses inputs; artifact directories are created by the workers that write into them.
 2. `web` scouts candidate sources.
 3. Parallel `web` collectors capture one source each.
 4. `write` drafts `reports/report.md`.
@@ -33,7 +33,7 @@ Follow these phases in order. Do not skip phases unless the workflow stops with 
 - Derive the research topic and constraints from the user request at the end of this prompt.
 - If the user request is too ambiguous to research responsibly, use `questionnaire` once to ask for the missing topic or constraints before invoking workers.
 - After workers have been invoked, do not use `questionnaire` unless this workflow explicitly reaches a user-decision checkpoint. Stop with a concise blocker instead.
-- Create or instruct workers to create these directories as needed: `sources/`, `screenshots/`, and `reports/`.
+- Do not create artifact directories yourself; each worker task that writes under `sources/`, `screenshots/`, or `reports/` must tell the worker to create its target directory first if it does not exist.
 
 ### 2. Source Scout
 
@@ -61,7 +61,7 @@ Collector #<n>: Fetch and clean this source.
 - Title: <title>
 - Relevance: <why this source matters>
 
-Create:
+Create (make the sources/ and screenshots/ directories first if they do not exist):
 - sources/<slug>.md with YAML frontmatter:
   url: <url>
   title: <title>

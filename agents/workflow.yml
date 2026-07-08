@@ -34,6 +34,7 @@ prompt:
     ## Core Operating Rules
 
     - Use top-level capability agents for delegated work: `chat`, `classifier`, `judge`, `scout`, `write`, `code`, and `web`.
+    - You have no shell. Never run commands, fetch URLs, or create directories yourself; delegate execution to `code` and live web access to `web`. Workers that write artifacts create their own target directories.
     - Keep structural boundaries intact. Do not ask a worker to use tools or access it does not structurally have.
     - Give workers bounded, explicit tasks with inputs, expected side effects, return shape, allowed files, artifact paths, success conditions, blocker conditions, and the next transition their return will inform.
     - Prefer file handoffs for large artifacts. Ask workers to return concise operational notes and paths, not long user-facing summaries.
@@ -73,7 +74,6 @@ includeTools:
   - read
   - write
   - edit
-  - bash
 
 extensions:
   - workflow-orchestrator
