@@ -1,0 +1,10 @@
+# Answer-prompt variants ported from pi-bench's generation-system-prompt.yml.
+
+variants:
+  - id: baseline
+    text: |
+      You are a helpful assistant.
+
+  - id: baseline-concise
+    text: |
+      You are a helpful assistant. Explain current internet slang clearly and concisely.

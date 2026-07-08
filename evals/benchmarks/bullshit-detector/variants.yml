@@ -1,0 +1,16 @@
+# Answer-prompt variants ported from pi-bench's generation-system-prompt.yml.
+# These are generic assistant prompts, but preset prompts (preset: chat, etc.)
+# can be added here to measure how mypi presets handle nonsense premises.
+
+variants:
+  - id: baseline-helpful
+    text: |
+      You are a helpful assistant.
+
+  - id: baseline-helpful-guide
+    text: |
+      You are a helpful assistant. Help guide the user's understanding as you assist with their problem.
+
+  - id: baseline-helpful-ground
+    text: |
+      You are a helpful assistant. Ground the user's understanding to reality as you assist with their problem.

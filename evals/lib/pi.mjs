@@ -70,21 +70,21 @@ function parseFinalOutput(stdout) {
 	return { text: textFromMessage(finalMessage), metadata: compactMetadata(finalMessage), event_count: eventCount };
 }
 
-function writeArtifacts(artifactDir, { args, output, stderr }) {
+function writeArtifacts(artifactDir, { args, output, stderr, textFile }) {
 	mkdirSync(artifactDir, { recursive: true });
 	writeFileSync(path.join(artifactDir, "args.json"), `${JSON.stringify(args, null, 2)}\n`);
 	writeFileSync(path.join(artifactDir, "output.json"), `${JSON.stringify(output, null, 2)}\n`);
-	writeFileSync(path.join(artifactDir, "answer.txt"), `${output.text ?? ""}\n`);
+	writeFileSync(path.join(artifactDir, textFile), `${output.text ?? ""}\n`);
 	writeFileSync(path.join(artifactDir, "stderr.txt"), stderr ?? "");
 }
 
-export function runPi({ prompt, systemPrompt, model, thinking, artifactDir, dryRunText = null }) {
+export function runPi({ prompt, systemPrompt, model, thinking, artifactDir, dryRunText = null, textFile = "answer.txt" }) {
 	const args = piArgs({ prompt, systemPrompt, model, thinking });
 	const started = process.hrtime.bigint();
 
 	if (dryRunText !== null) {
 		const output = { text: dryRunText, metadata: { dry_run: true }, event_count: 1, elapsed_seconds: 0 };
-		writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: "[dry-run]\n" });
+		writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: "[dry-run]\n", textFile });
 		return { exitCode: 0, text: dryRunText, errorMessage: "", elapsedSeconds: 0 };
 	}
 
@@ -98,13 +98,13 @@ export function runPi({ prompt, systemPrompt, model, thinking, artifactDir, dryR
 
 	if (proc.error) {
 		const output = { text: "", metadata: {}, event_count: 0, elapsed_seconds: elapsedSeconds };
-		writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: String(proc.error) });
+		writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: String(proc.error), textFile });
 		return { exitCode: 1, text: "", errorMessage: `failed to launch pi: ${proc.error.message}`, elapsedSeconds };
 	}
 
 	const output = parseFinalOutput(proc.stdout ?? "");
 	output.elapsed_seconds = elapsedSeconds;
-	writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: proc.stderr ?? "" });
+	writeArtifacts(artifactDir, { args: ["pi", ...args], output, stderr: proc.stderr ?? "", textFile });
 
 	let exitCode = proc.status ?? 0;
 	let errorMessage = "";

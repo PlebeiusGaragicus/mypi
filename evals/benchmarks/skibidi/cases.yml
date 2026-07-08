@@ -1,0 +1,138 @@
+# Ported from EXAMPLE/pi-bench.
+
+name: skibidi
+description: Generation Alpha and circa 2023-2025 internet slang terms.
+license: MIT
+
+cases:
+  - id: skibidi
+    term: Skibidi
+    question: |
+      In context of internet slang, what does "skibidi" mean?
+    expected_answer: |
+      A versatile word from "Skibidi Toilet" that can mean good, bad, or just filler for, well, nonsense.
+      A satisfactory answer should connect the term to "Skibidi Toilet" and explain that it is context-dependent slang rather than a single precise dictionary word.
+      It can mean good, bad, weird, or act as nonsense filler.
+
+  - id: rizz-rizzler
+    term: Rizz/Rizzler
+    question: |
+      In context of internet slang, what do "rizz" and/or "rizzler" mean?
+    expected_answer: |
+      Derived from "charisma," it refers to someone's ability to flirt or charm someone (a "rizzler" is a master of this).
+      A satisfactory answer should say that "rizz" means something akin to charisma, charm, or flirting ability, and that "rizzler" refers to someone who has or uses rizz especially well.
+
+  - id: ohio
+    term: Ohio
+    question: |
+      In context of internet slang, what does it mean to call something "Ohio"?
+    expected_answer: |
+      Used to describe something weird, crazy, or cringey, originating from memes that portrayed Ohio as an chaotic place.
+      A satisfactory answer should not treat Ohio only as the U.S. state. It should explain the meme usage: strange, chaotic, cursed, absurd, or cringey.
+
+  - id: skibidi-ohio-rizz
+    term: Skibidi Ohio Rizz
+    question: |
+      An insult used to describe someone who is awkward or embarrassing when trying to flirt.
+      In context of internet slang, what does "skibidi Ohio rizz" usually imply?
+    expected_answer: |
+      A satisfactory answer should recognize this as a layered slang insult rather than a literal phrase. It should connect "Ohio" with weird/cringey and "rizz" with flirting or charm, yielding awkward or embarrassing flirting.
+
+  - id: sigma
+    term: Sigma
+    question: |
+      A "lone wolf" or a very cool, successful person (often used sarcastically or for "alpha males").
+      In context of internet slang, what does "sigma" mean when describing a person?
+    expected_answer: |
+      A satisfactory answer should mention the lone-wolf or independent-successful persona and ideally note that the term is often ironic or tied to alpha-male meme culture.
+
+  - id: fanum-tax
+    term: Fanum Tax
+    question: |
+      In context of internet slang, what is the "Fanum tax"?
+    expected_answer: |
+      Coined by a streamer, this means stealing a bite or part of someone else's food.
+      A satisfactory answer should identify the food-sharing/food-stealing meaning and connect it to Fanum or streamer culture. It should not describe a real tax.
+
+  - id: gyatt
+    term: Gyatt
+    question: |
+      In context of internet slang, what does "gyatt" mean?
+    expected_answer: |
+      A term used to describe a person with a large butt, often exclaimed in surprise.
+      A satisfactory answer should identify that the term is commonly about a large butt or an exclamation of attraction/surprise. It may mention that usage can be crude.
+
+  - id: mewing
+    term: Mewing
+    question: |
+      In context of internet slang, what does "mewing" mean?
+    expected_answer: |
+      A facial exercise technique done to define the jawline, often mentioned while ignoring someone.
+      A satisfactory answer should mention jaw posture, facial exercise, or defining the jawline. It may also note the meme usage where someone gestures that they cannot talk because they are mewing.
+
+  - id: mogging
+    term: Mogging
+    question: |
+      In context of internet slang, what does "mogging" mean?
+    expected_answer: |
+      To be more attractive than someone else, making them look bad in comparison.
+      A satisfactory answer should explain comparison or outclassing, especially in attractiveness or status. It should not define it as a generic video game or business term.
+
+  - id: sus
+    term: Sus
+    question: |
+      In context of internet slang, what does "sus" mean?
+    expected_answer: |
+      Short for "suspicious" or "suspect," commonly used to describe someone acting shady.
+      A satisfactory answer should define "sus" as suspicious, suspect, shady, or untrustworthy. Mentioning Among Us is acceptable but not required.
+
+  - id: cap-no-cap
+    term: Cap/No Cap
+    question: |
+      In context of internet slang, what do "cap" and "no cap" mean?
+    expected_answer: |
+      "Cap" is a lie, so "no cap" means for real or no lie.
+      A satisfactory answer should give both halves: "cap" as lie or exaggeration and "no cap" as truth, honesty, or for real.
+
+  - id: bussin
+    term: Bussin
+    question: |
+      In context of internet slang, what does "bussin" mean?
+    expected_answer: |
+      Means something is really good, usually used for food. 
+      A satisfactory answer should define "bussin" as very good or delicious and should preferably mention its common food usage.
+
+  - id: maxxing
+    term: Maxxing
+    question: |
+      In context of internet slang, what does "maxxing" mean?
+    expected_answer: |
+      Maxxing is a slang suffix that describes the act of obsessively optimizing or maximizing a specific trait to reach its absolute peak.
+
+  - id: delulu
+    term: Delulu
+    question: |
+      In context of internet slang, what does "delulu" mean?
+    expected_answer: |
+      Short for delusional, often used to describe someone who is overly optimistic or unrealistic about a situation.
+
+  - id: aura
+    term: Aura
+    question: |
+      In context of internet slang, what does "aura" mean?
+    expected_answer: |
+      A measure of someone's "coolness" or presence; you can "gain" or "lose" aura points based on your actions.
+
+  - id: brainrot
+    term: Brainrot
+    question: |
+      In context of internet slang, what does "brainrot" mean?
+    expected_answer: |
+      Low quality, highly-addictive or addictive.
+
+  - id: gooner
+    term: Gooner / Gooning
+    question: |
+      In context of internet slang, what does "gooner" or "gooning" mean?
+    expected_answer: |
+      masturbation.

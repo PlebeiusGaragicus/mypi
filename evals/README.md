@@ -2,9 +2,17 @@
 
 Local eval harness for measuring mypi prompt changes instead of eyeballing
 them. Design and roadmap: [docs/proposals.md — P6](../docs/proposals.md).
-This is phase 1: deterministic single-turn benchmarks plus run comparison.
-Judged benchmarks, trace retrospectives, and orchestrator comparison are
-later phases.
+Phases 1–2 are implemented: deterministic and LLM-judged single-turn
+benchmarks plus run comparison. Trace retrospectives and orchestrator
+comparison are later phases.
+
+Current benchmarks:
+
+- `classifier-labels` — deterministic exact-match suite for the classifier preset
+- `bullshit-detector` — 100 judged cases (0–2): does the model call out
+  professional-sounding nonsense? (ported from EXAMPLE/pi-bench)
+- `skibidi` — 17 judged cases (0/1): current internet slang knowledge
+  (ported from EXAMPLE/pi-bench)
 
 Everything runs locally against your configured providers (LM Studio /
 Ollama / remote). Nothing here touches GitHub Actions, and run results are
@@ -40,8 +48,10 @@ Run options: `--thinking off,low,...` (matrix over each model), `--variants
 id,...` (subset of variants.yml), `--samples N` (repeat each cell; means are
 per-cell), `--limit N` (first N cases), `--run-id <id>` (default timestamp),
 `--resume` (continue an interrupted run; errored items rerun, completed items
-skip), `--dry-run` (no model calls; deterministic fake answers exercise the
-whole pipeline).
+and usable answer/judge artifacts skip), `--dry-run` (no model calls;
+deterministic fake answers and judge scores exercise the whole pipeline).
+Judged benchmarks (those with a `judge-template.md`) also require
+`--judge-model <id>` and accept `--judge-thinking <level>`.
 
 Model ids are `provider/model` as pi resolves them (`pi --list-models`).
 
@@ -57,15 +67,23 @@ pi --mode json --no-tools --no-skills --no-prompt-templates \
 ```
 
 so the model sees exactly the variant prompt and the question — no mypi
-extensions, skills, or context files. The benchmark's `grader.mjs` scores the
-reply immediately (`grade({caseData, answer}) -> {score, maxScore,
-description}`); descriptions are diagnostic ("right label, wrong casing" vs
-"label buried in longer reply") because they're the feedback prompt tuning
-acts on.
+extensions, skills, or context files. Execution is phased like pi-bench:
+all answers first (model-grouped), then all judge calls as one contiguous
+block (the judge model loads once), then grading. The judge gets a fixed
+impartial system prompt and the benchmark's `judge-template.md` rendered
+with `{question}`, `{response}`, and any case fields (`{judge_hint}`,
+`{expected_answer}`, ...). Judges must return `Score:` / `Description:`
+lines; anything else is a grade error, never a coerced score.
+
+The benchmark's `grader.mjs` scores each item
+(`grade({caseData, answer, judgeText}) -> {score, maxScore, description}`);
+descriptions are diagnostic ("right label, wrong casing" vs "label buried in
+longer reply") because they're the feedback prompt tuning acts on.
 
 Artifacts land in `evals/runs/<benchmark>/<run-id>/` (gitignored): per-item
-`args.json`, `output.json`, `answer.txt`, `system-prompt.md`, `parsed.json`,
-plus `results.jsonl`, `manifest.jsonl`, `run.log`, `config.json`, and
+`answer/` and `judge/` dirs (`args.json`, `output.json`, `answer.txt` /
+`judge.txt`, `prompt.txt`, `system-prompt.md`) plus `parsed.json`, and
+run-level `results.jsonl`, `manifest.jsonl`, `run.log`, `config.json`, and
 `report.md` with mean scores per model/variant, per-tag slices, and every
 failure with its diagnosis.
 
@@ -73,9 +91,10 @@ failure with its diagnosis.
 
 ```
 evals/benchmarks/<name>/
-  cases.yml       # cases: id, question, expected, tags
-  variants.yml    # system-prompt variants: preset: <agent> or inline text
-  grader.mjs      # export function grade({caseData, answer})
+  cases.yml          # cases: id, question, tags, + expected / judge_hint / etc.
+  variants.yml       # system-prompt variants: preset: <agent> or inline text
+  grader.mjs         # export function grade({caseData, answer, judgeText})
+  judge-template.md  # optional; its presence makes the benchmark judged
 ```
 
 `preset: classifier` resolves the live `prompt.system` from

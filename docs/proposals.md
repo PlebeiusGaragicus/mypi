@@ -108,7 +108,7 @@ The split is the better first move: it helps every repo consumer of AGENTS.md, n
 
 ## P6 — Evals: prompt iteration, trace retrospectives, and orchestrator comparison
 
-**Status: phase 1 implemented** (`evals/` harness: deterministic benchmarks, `classifier-labels` suite, `bench compare` — see [evals/README.md](https://github.com/PlebeiusGaragicus/mypi/blob/main/evals/README.md)). **Phases 2–5 open.**
+**Status: phases 1–2 implemented** (`evals/` harness: deterministic + judged benchmarks, `bench compare`, suites: `classifier-labels`, `bullshit-detector` and `skibidi` ported from EXAMPLE/pi-bench — see [evals/README.md](https://github.com/PlebeiusGaragicus/mypi/blob/main/evals/README.md)). A judge-preset case suite is still open within phase 2. **Phases 3–5 open.**
 
 mypi's presets and workflow prompts are currently tuned by feel. This proposal adds an `evals/` harness so a prompt change can be judged by numbers: run a fixed case suite before and after, compare, keep the change only if it measurably improved. The architecture is ported from the `EXAMPLE/pi-bench` harness (config-per-run, full artifact preservation, judge-with-hint templates, strict `Score:/Description:` parsing, resumable manifests) — the architecture, not the code, which carries dead paths and a non-functioning copied `evals/` shell script.
 

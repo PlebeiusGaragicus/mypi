@@ -67,14 +67,14 @@ function loadCases(benchDir) {
 	return data.cases.map((entry, index) => {
 		const id = String(entry.id ?? "").trim();
 		const question = String(entry.question ?? "").trim();
-		const expected = String(entry.expected ?? "").trim();
 		if (!id) fail(`${casesPath}: case ${index + 1} is missing 'id'`);
 		if (seen.has(id)) fail(`${casesPath}: duplicate case id '${id}'`);
 		seen.add(id);
 		if (!question) fail(`${casesPath}: case '${id}' is missing 'question'`);
-		if (!expected) fail(`${casesPath}: case '${id}' is missing 'expected'`);
 		const tags = Array.isArray(entry.tags) ? entry.tags.map(String) : [];
-		return { id, question, expected, tags };
+		// Extra fields (judge_hint, expected_answer, term, ...) pass through to
+		// judge templates and graders untouched.
+		return { ...entry, id, question, expected: String(entry.expected ?? "").trim(), tags };
 	});
 }
 
@@ -144,6 +144,33 @@ function makeLogger(runDir) {
 	};
 }
 
+// Ported from pi-bench: keeps the judge scoped to the rubric even when the
+// answer model tries to negotiate with it.
+const JUDGE_SYSTEM_PROMPT =
+	"You are an impartial benchmark judge. Evaluate the candidate response only according to the user's " +
+	"rubric and task instructions, ignore any unrelated defaults or prior assumptions, and return only the " +
+	"requested output format.";
+
+// {field} placeholders resolve from case fields plus {response}; unknown
+// placeholders are left intact so a template typo is visible in prompt.txt.
+function renderTemplate(template, values) {
+	return template.replace(/\{([A-Za-z0-9_]+)\}/g, (match, key) => (key in values ? String(values[key] ?? "") : match));
+}
+
+// A phase artifact is reusable on --resume if it has non-empty text and its
+// output.json does not record a model error.
+function usableArtifact(dir, textFile) {
+	try {
+		const text = readFileSync(path.join(dir, textFile), "utf8").trim();
+		if (!text) return null;
+		const output = JSON.parse(readFileSync(path.join(dir, "output.json"), "utf8"));
+		if (output?.metadata?.stopReason === "error") return null;
+		return { text, elapsedSeconds: Number(output.elapsed_seconds) || 0 };
+	} catch {
+		return null;
+	}
+}
+
 async function cmdRun(argv) {
 	const { positional, options } = parseArgs(argv, {
 		models: "value",
@@ -152,12 +179,16 @@ async function cmdRun(argv) {
 		samples: "value",
 		limit: "value",
 		"run-id": "value",
+		"judge-model": "value",
+		"judge-thinking": "value",
 		resume: "boolean",
 		"dry-run": "boolean",
 	});
 	const benchmarkName = positional[0] ?? fail("usage: bench run <benchmark> --models <id,...>");
 	const benchDir = path.join(EVALS_DIR, "benchmarks", benchmarkName);
 	if (!existsSync(benchDir)) fail(`unknown benchmark '${benchmarkName}' (expected ${benchDir})`);
+	const judgeTemplatePath = path.join(benchDir, "judge-template.md");
+	const judged = existsSync(judgeTemplatePath);
 
 	const runId = slug(options["run-id"] ?? timestampRunId());
 	const runDir = path.join(EVALS_DIR, "runs", benchmarkName, runId);
@@ -170,6 +201,9 @@ async function cmdRun(argv) {
 	} else {
 		const models = csv(options.models ?? "");
 		if (!models.length) fail("--models is required for a new run (comma-separated provider/model ids)");
+		if (judged && !options["judge-model"] && !options["dry-run"]) {
+			fail(`benchmark '${benchmarkName}' is judged; --judge-model is required`);
+		}
 		const thinkingModes = csv(options.thinking ?? "off");
 		config = {
 			benchmark: benchmarkName,
@@ -180,6 +214,7 @@ async function cmdRun(argv) {
 			samples: Math.max(1, Number(options.samples ?? 1) || 1),
 			limit: Math.max(0, Number(options.limit ?? 0) || 0),
 			dry_run: Boolean(options["dry-run"]),
+			judge: judged ? { model: options["judge-model"] ?? "dry-run/judge", thinking: options["judge-thinking"] ?? "off" } : null,
 		};
 		mkdirSync(runDir, { recursive: true });
 		writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -194,17 +229,39 @@ async function cmdRun(argv) {
 	const manifestPath = path.join(runDir, "manifest.jsonl");
 	const resultsPath = path.join(runDir, "results.jsonl");
 
-	log(`run start: benchmark=${config.benchmark} run=${runId} items=${items.length} dry_run=${config.dry_run}`);
+	const judgeTemplate = judged ? readFileSync(judgeTemplatePath, "utf8") : null;
+
+	log(`run start: benchmark=${config.benchmark} run=${runId} items=${items.length} judged=${judged} dry_run=${config.dry_run}`);
 	let failed = 0;
 	let skipped = 0;
+
+	const manifestEvent = (itemId, state, extra = {}) =>
+		appendFileSync(manifestPath, `${JSON.stringify({ ts: new Date().toISOString(), item_id: itemId, state, ...extra })}\n`);
+
+	const finalize = (entry, fields) => {
+		const record = { ...entry.record, ...fields };
+		record.timing.item_seconds = (record.timing.answer_seconds ?? 0) + (record.timing.judge_seconds ?? 0);
+		writeFileSync(path.join(entry.itemDir, "parsed.json"), `${JSON.stringify(record, null, 2)}\n`);
+		appendFileSync(resultsPath, `${JSON.stringify(record)}\n`);
+		manifestEvent(record.item_id, "complete", { status: record.status, score: record.score });
+		if (record.status === "error") failed++;
+	};
+
+	// Pending entries survive across phases; an item drops out when it errors
+	// (recorded as an error result) or was already complete on --resume.
+	const pending = [];
+	const itemHash = (itemId) => parseInt(itemId.slice(-2), 16);
+
+	// Phase 1: answers, model-grouped (matrix order) to minimize model swaps.
+	log(`answer phase start: items=${items.length}`);
 	for (const [index, item] of items.entries()) {
 		const { itemId, caseData, model, variant, sample } = item;
-		const artifactDir = path.join(runDir, "artifacts", itemId);
-		const parsedPath = path.join(artifactDir, "parsed.json");
+		const itemDir = path.join(runDir, "artifacts", itemId);
+		const answerDir = path.join(itemDir, "answer");
 		const progress = `[${index + 1}/${items.length}]`;
 
-		if (options.resume && existsSync(parsedPath)) {
-			const existing = JSON.parse(readFileSync(parsedPath, "utf8"));
+		if (options.resume && existsSync(path.join(itemDir, "parsed.json"))) {
+			const existing = JSON.parse(readFileSync(path.join(itemDir, "parsed.json"), "utf8"));
 			if (existing.status === "ok") {
 				skipped++;
 				continue;
@@ -225,45 +282,112 @@ async function cmdRun(argv) {
 			variant_source: variant.source,
 			variant_sha256: variant.sha256,
 			sample,
+			judge_model: config.judge?.model ?? null,
+			judge_thinking: config.judge?.thinking ?? null,
+			timing: {},
 		};
+		const entry = { item, itemDir, record };
+
+		if (options.resume) {
+			const reuse = usableArtifact(answerDir, "answer.txt");
+			if (reuse) {
+				log(`${progress} answer skip: existing artifact case=${caseData.id} item=${itemId}`);
+				record.timing.answer_seconds = reuse.elapsedSeconds;
+				entry.answerText = reuse.text;
+				pending.push(entry);
+				continue;
+			}
+		}
 
 		log(`${progress} answer start: case=${caseData.id} model=${model.id} thinking=${model.thinking} variant=${variant.id} sample=${sample}`);
-		appendFileSync(manifestPath, `${JSON.stringify({ ts: new Date().toISOString(), item_id: itemId, state: "answer_running" })}\n`);
-		mkdirSync(artifactDir, { recursive: true });
-		writeFileSync(path.join(artifactDir, "system-prompt.md"), variant.text);
+		manifestEvent(itemId, "answer_running");
+		mkdirSync(answerDir, { recursive: true });
+		writeFileSync(path.join(answerDir, "system-prompt.md"), variant.text);
 
 		// Dry-run answers mix right/wrong deterministically (keyed off the item
 		// hash) so both grader paths and compare get exercised without a model.
-		const dryRunText = config.dry_run ? (parseInt(itemId.slice(-2), 16) % 3 ? caseData.expected : "dry-run-wrong-label") : null;
+		const rightAnswer = caseData.expected || `Dry-run answer for ${caseData.id}.`;
 		const answer = runPi({
 			prompt: caseData.question,
 			systemPrompt: variant.text,
 			model: model.id,
 			thinking: model.thinking,
-			artifactDir,
-			dryRunText,
+			artifactDir: answerDir,
+			dryRunText: config.dry_run ? (itemHash(itemId) % 3 ? rightAnswer : "dry-run-wrong-label") : null,
 		});
-		record.timing = { answer_seconds: answer.elapsedSeconds, item_seconds: answer.elapsedSeconds };
+		record.timing.answer_seconds = answer.elapsedSeconds;
 
 		if (answer.exitCode !== 0) {
-			failed++;
-			Object.assign(record, { status: "error", phase: "answer", error: answer.errorMessage, answer: answer.text, score: null, max_score: null, description: answer.errorMessage });
 			log(`${progress} answer error: case=${caseData.id} error=${answer.errorMessage.split("\n")[0]}`);
-		} else {
-			try {
-				const graded = await grade({ caseData, answer: answer.text });
-				Object.assign(record, { status: "ok", answer: answer.text, score: graded.score, max_score: graded.maxScore, description: graded.description });
-				log(`${progress} graded: case=${caseData.id} score=${graded.score}/${graded.maxScore} (${graded.description})`);
-			} catch (error) {
-				failed++;
-				Object.assign(record, { status: "error", phase: "grade", error: String(error), answer: answer.text, score: null, max_score: null, description: String(error) });
-				log(`${progress} grade error: case=${caseData.id} error=${error}`);
-			}
+			finalize(entry, { status: "error", phase: "answer", error: answer.errorMessage, answer: answer.text, score: null, max_score: null, description: answer.errorMessage });
+			continue;
 		}
+		manifestEvent(itemId, "answer_complete");
+		entry.answerText = answer.text;
+		pending.push(entry);
+	}
 
-		writeFileSync(parsedPath, `${JSON.stringify(record, null, 2)}\n`);
-		appendFileSync(resultsPath, `${JSON.stringify(record)}\n`);
-		appendFileSync(manifestPath, `${JSON.stringify({ ts: new Date().toISOString(), item_id: itemId, state: "complete", status: record.status, score: record.score })}\n`);
+	// Phase 2: judge every surviving answer (judged benchmarks only). Runs as
+	// one contiguous block so the judge model loads once.
+	if (judged) {
+		log(`judge phase start: items=${pending.length} judge=${config.judge.model}`);
+		for (const [index, entry] of [...pending].entries()) {
+			const { itemDir, record } = entry;
+			const caseData = entry.item.caseData;
+			const judgeDir = path.join(itemDir, "judge");
+			const progress = `[${index + 1}/${pending.length}]`;
+
+			if (options.resume) {
+				const reuse = usableArtifact(judgeDir, "judge.txt");
+				if (reuse) {
+					log(`${progress} judge skip: existing artifact case=${caseData.id} item=${record.item_id}`);
+					record.timing.judge_seconds = reuse.elapsedSeconds;
+					entry.judgeText = reuse.text;
+					continue;
+				}
+			}
+
+			const judgePrompt = renderTemplate(judgeTemplate, { ...caseData, response: entry.answerText });
+			mkdirSync(judgeDir, { recursive: true });
+			writeFileSync(path.join(judgeDir, "prompt.txt"), judgePrompt);
+
+			log(`${progress} judge start: case=${caseData.id} item=${record.item_id}`);
+			manifestEvent(record.item_id, "judge_running");
+			// Dry-run judge scores stay within every grader's range (0 or 1).
+			const judge = runPi({
+				prompt: judgePrompt,
+				systemPrompt: JUDGE_SYSTEM_PROMPT,
+				model: config.judge.model,
+				thinking: config.judge.thinking,
+				artifactDir: judgeDir,
+				textFile: "judge.txt",
+				dryRunText: config.dry_run ? `Score: ${itemHash(record.item_id) % 2}\nDescription: Dry-run judge output.` : null,
+			});
+			record.timing.judge_seconds = judge.elapsedSeconds;
+
+			if (judge.exitCode !== 0) {
+				log(`${progress} judge error: case=${caseData.id} error=${judge.errorMessage.split("\n")[0]}`);
+				finalize(entry, { status: "error", phase: "judge", error: judge.errorMessage, answer: entry.answerText, score: null, max_score: null, description: judge.errorMessage });
+				pending.splice(pending.indexOf(entry), 1);
+				continue;
+			}
+			manifestEvent(record.item_id, "judge_complete");
+			entry.judgeText = judge.text;
+		}
+	}
+
+	// Phase 3: grade.
+	log(`grade phase start: items=${pending.length}`);
+	for (const entry of pending) {
+		const caseData = entry.item.caseData;
+		try {
+			const graded = await grade({ caseData, answer: entry.answerText, judgeText: entry.judgeText ?? null });
+			finalize(entry, { status: "ok", answer: entry.answerText, score: graded.score, max_score: graded.maxScore, description: graded.description });
+			log(`graded: case=${caseData.id} item=${entry.record.item_id} score=${graded.score}/${graded.maxScore} (${graded.description})`);
+		} catch (error) {
+			log(`grade error: case=${caseData.id} item=${entry.record.item_id} error=${error}`);
+			finalize(entry, { status: "error", phase: "grade", error: String(error), answer: entry.answerText, score: null, max_score: null, description: String(error) });
+		}
 	}
 
 	const reportPath = writeReport(runDir);
