@@ -220,3 +220,29 @@ This matches the mechanic we want closely enough that building our own rich sele
 - **Tool-set interplay.** Preset activation calls `pi.setActiveTools()`, and Plannotator manages its own planning-only tools around the active set. Verify a `/preset` switch mid-session doesn't strand or drop `plannotator_submit_plan`, and that our `annotate` tool survives Plannotator's phase transitions. Likely fine (Plannotator strips only its own tools) but needs a smoke test.
 - **Agent-initiated vs user-initiated.** Plannotator already gives users `/plannotator-annotate` for free once installed. The mypi `annotate` tool's value is letting the *agent* open the surface at the right moment; decide whether that's worth a tool slot in small local models' tool lists, or whether prompt guidance pointing users at the slash command suffices as a v1.
 - **Local models and feedback volume.** Annotation feedback arrives as one composed user message; large annotation sets on a ~30B model could crowd context. If it becomes a problem, mirror P3's approach: cap and point at the file.
+
+---
+
+## P8 — API-first URL extraction; evaluate FireCrawl as the heavy-duty scraper
+
+**Status: partially adopted (Tavily/Exa extraction is now the standard); FireCrawl evaluation proposed, not implemented.**
+
+**Context (2026-07-08):** browser-control is deprecated — removed from the `web` preset, all preset prompts, and the deepresearch collector contract; the skill and `utilities/browser-runtime` stay in-repo but nothing references them. The open web increasingly deploys anti-bot and anti-AI-scraping measures, which makes a driven Chromium clunky and high-maintenance. Direction: use commercial APIs whose job is fighting that fight for us.
+
+### Already in place
+
+- `tavily-extract <url> [--depth advanced] [--max-chars N]` — fetch + clean one or more URLs through Tavily.
+- `exa-contents <url> [--highlights "..."] [--text]` — page contents/excerpts through Exa, token-efficient.
+- The `web` preset now names these as the way to read a specific URL; deepresearch collectors use them instead of `$B` + screenshots.
+
+### Open question — is FireCrawl worth adding?
+
+[FireCrawl](https://firecrawl.dev) specializes in scraping-hostile pages: JS rendering, proxy rotation, anti-bot handling, markdown output, plus crawl (whole-site) and map (URL discovery) endpoints that Tavily/Exa extraction does not offer.
+
+Evaluation sketch (a `firecrawl-scrape` skill mirroring the tavily/exa shape — path-promoted CLI, `FIRECRAWL_API_KEY` in `mypi.env`):
+
+1. Collect the URLs where `tavily-extract`/`exa-contents` actually failed in real runs (start logging these).
+2. Run the same URLs through FireCrawl's scrape endpoint; compare success rate and content quality.
+3. Adopt only if the delta justifies a third provider key and skill; wire it as the *fallback* extractor in the `web` preset ("if tavily-extract and exa-contents both fail, try firecrawl-scrape"), not the default.
+
+**Non-goals:** re-adding browser automation to presets; whole-site crawling as a default research behavior (crawl endpoints are for explicit user requests).

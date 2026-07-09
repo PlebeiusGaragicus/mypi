@@ -6,7 +6,7 @@ Skills are prompt-visible capability packages under `shared/skills/<name>/`. A p
 
 | Skill | Purpose | CLI (path-promoted) | Wired into |
 | --- | --- | --- | --- |
-| `browser-control` | `$B` browser automation contract and safety rules | — (uses `$B`) | `web` |
+| `browser-control` | `$B` browser automation contract and safety rules | — (uses `$B`) | — (not wired into presets; prefer Tavily/Exa) |
 | `tavily-search` | Tavily web search and extraction | `tavily-search`, `tavily-extract` | `web` |
 | `exa-search` | Exa search, similar-links, and contents | `exa-search`, `exa-similar`, `exa-contents` | `web` |
 | `arxiv-search` | arXiv search and paper fetch | `arxiv-search`, `arxiv-fetch` | `web` |

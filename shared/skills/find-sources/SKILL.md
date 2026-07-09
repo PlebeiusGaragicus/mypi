@@ -9,7 +9,7 @@ description: >-
 
 # Find sources with web workers
 
-You hold the `subagent` tool with `web` workers available. A web worker is a fresh agent with search skills (tavily, exa, arxiv, congress.gov) and a browser: it can iterate queries, sift noisy results, and chase documents inside its own disposable context, then return a concise reply. Use it so search noise never enters this conversation.
+You hold the `subagent` tool with `web` workers available. A web worker is a fresh agent with search skills (tavily, exa, arxiv, congress.gov): it can iterate queries, sift noisy results, and chase documents inside its own disposable context, then return a concise reply. Use it so search noise never enters this conversation.
 
 ## When to delegate — and when not to
 
@@ -23,6 +23,7 @@ Workers start with zero conversation context. The task text must be self-contain
 
 - **The claim, verbatim** — the precise statement needing support.
 - **What would confirm or refute it** — workers should return disconfirming evidence too; an argument built on filtered evidence fails the steelman test.
+- **Recency reminder** — workers run past their model's training cutoff. State in the task that retrieved, dated sources are authoritative over the worker's memory, and that not recognizing an event is never grounds to report it as fictional.
 - **Preferred source types** — primary documents, official statistics, dated reporting; name any known-good starting points.
 - **The return contract** (below), stated explicitly in the task.
 

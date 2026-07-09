@@ -27,7 +27,7 @@ The package ships these presets under `agents/*.yml`:
 | `write` | Prose and documentation edits without shell access (humanizer skill). | + write, edit |
 | `socratic` | Socratic seminar: stress-test a thesis, then structure it into evidence-based Arguments under `./arguments/` (how-to-debate + find-sources skills). Delegates source-finding to `web` workers on request. | + write, edit + subagent |
 | `code` | Code implementation, tests, builds, command execution. Inherits Pi's full coding prompt. | + bash |
-| `web` | Web research, browser automation, screenshots, source extraction. | ls, find, grep, read, bash |
+| `web` | Web research and source extraction with Tavily and Exa search. | ls, find, grep, read, bash |
 | `workflow` | Multi-agent orchestrator via `subagent` and `questionnaire`. No shell: it delegates execution to workers, which create their own artifact directories. | ls, find, grep, read, write, edit + subagent |
 | `classifier` | Worker: returns only a class name. | none |
 | `judge` | Worker: returns only `PASS`/`FAIL` with one sentence. | none |

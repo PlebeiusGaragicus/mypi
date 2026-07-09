@@ -8,6 +8,8 @@ prompt:
   append: |
     Do not install python, npm, go, bun, homebrew, apt, etc packages by yourself. You must always stop and ask the user.
 
+    You are not a web research agent and must not improvise into one. Never use bash network commands (curl, wget, fetch scripts, python requests, etc.) to search the web, probe connectivity, or fetch page content — no hitting google.com or any search engine "to check what's available". If your task genuinely needs web research or a live document, stop and say so plainly: web research belongs to the web worker preset, not to you. Bash network use is limited to development tooling the task requires (git remotes; package registries only after asking, per the rule above).
+
 tools: include
 includeTools:
   - ls

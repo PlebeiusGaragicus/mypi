@@ -5,8 +5,8 @@ Use top-level capability agents to produce a citation-backed research artifact: 
 ## Program Contract
 
 - Inputs: research topic, constraints, desired output path, source preferences, and scope limits from the user request.
-- Outputs: saved research report, collected source files, optional screenshots, and a concise final response that points to artifacts.
-- State: `sources/`, `screenshots/`, `reports/report.md`, worker returns, and validation notes.
+- Outputs: saved research report, collected source files, and a concise final response that points to artifacts.
+- State: `sources/`, `reports/report.md`, worker returns, and validation notes.
 - Invariants: factual claims require citations; workers write artifacts only when structurally allowed; final chat output is not the primary report artifact.
 - Stop conditions: ambiguous topic, source/search blockers, insufficient collected sources, or report validation failure after one repair pass.
 
@@ -33,7 +33,7 @@ Follow these phases in order. Do not skip phases unless the workflow stops with 
 - Derive the research topic and constraints from the user request at the end of this prompt.
 - If the user request is too ambiguous to research responsibly, use `questionnaire` once to ask for the missing topic or constraints before invoking workers.
 - After workers have been invoked, do not use `questionnaire` unless this workflow explicitly reaches a user-decision checkpoint. Stop with a concise blocker instead.
-- Do not create artifact directories yourself; each worker task that writes under `sources/`, `screenshots/`, or `reports/` must tell the worker to create its target directory first if it does not exist.
+- Do not create artifact directories yourself; each worker task that writes under `sources/` or `reports/` must tell the worker to create its target directory first if it does not exist.
 
 ### 2. Source Scout
 
@@ -61,18 +61,16 @@ Collector #<n>: Fetch and clean this source.
 - Title: <title>
 - Relevance: <why this source matters>
 
-Create (make the sources/ and screenshots/ directories first if they do not exist):
+Create (make the sources/ directory first if it does not exist):
 - sources/<slug>.md with YAML frontmatter:
   url: <url>
   title: <title>
   date_fetched: <ISO timestamp if available>
-  screenshot: screenshots/<slug>.png or null
-- screenshots/<slug>.png when browser-control can render the page.
-- On `CHALLENGE_DETECTED` from `$B`, run handoff, notify the user, and resume only after the challenge is cleared. Do not use curl on the same URL as a bypass.
+- Fetch page content with tavily-extract or exa-contents (read the matching skill first). Do not use browser automation, and do not retry blocked pages with curl.
 
-The source file must contain cleaned main content, important quotations or facts, and a short source summary. Preserve URLs. If access fails, do not invent content; save a screenshot or issue note when useful and return the failure clearly.
+The source file must contain cleaned main content, important quotations or facts, and a short source summary. Preserve URLs. If access fails, do not invent content; save an issue note when useful and return the failure clearly.
 
-Return a concise collection confirmation with source path, screenshot path if any, title, URL, summary, approximate content captured, and issues encountered.
+Return a concise collection confirmation with source path, title, URL, summary, approximate content captured, and issues encountered.
 ```
 
 Continue the workflow if one collector fails, but note failed URLs. Stop only if too few sources were collected to support a useful report.
@@ -86,7 +84,7 @@ The write task must ask it to:
 - Read all `sources/*.md` files.
 - Write the report to `reports/report.md` unless the user requested another path.
 - Use inline numbered citations such as `[1]` for factual claims.
-- Include a `Sources` section mapping citation numbers to source titles, URLs, and screenshot paths.
+- Include a `Sources` section mapping citation numbers to source titles and URLs.
 - Preserve uncertainty and report access failures or source gaps.
 - Return a `### Draft Written` confirmation with report path, source count, section count, and notes for editorial review.
 
@@ -99,7 +97,6 @@ The editor task must ask it to:
 - Read `reports/report.md` and all `sources/*.md` files.
 - Verify that important factual claims have inline citations.
 - Verify that citation numbers map to URLs in the `Sources` section.
-- Verify screenshot paths that appear in the report.
 - Correct unsupported claims, missing citations, weak structure, and broken source references.
 - Save the final polished report back to `reports/report.md`.
 - Return a `### Editorial Review` confirmation with changes made, source coverage, remaining gaps, and whether the report is ready.
@@ -115,13 +112,12 @@ If validation fails, run one repair pass with `write` or `web` depending on the 
 ## Artifact Conventions
 
 - `sources/` for one markdown file per collected source.
-- `screenshots/` for browser evidence and access-failure receipts.
 - `reports/report.md` for the final report unless the user specifies another path.
 - `drafts/` for intermediate writing only when useful.
 
 ## Stop Conditions
 
-- Stop early if search providers, browser-control, or source access fail in a way that blocks the research.
+- Stop early if search providers or source access fail in a way that blocks the research.
 - Stop early if the topic is too ambiguous to research without a user choice; return a concise clarification need instead of guessing.
 - Do not ask workers to write files unless their structural permissions allow it and the task explicitly needs an artifact.
 - Do not accept a report without inline citations and a source appendix.

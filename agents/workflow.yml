@@ -44,7 +44,7 @@ prompt:
     - Use `scout` for read-only directory or repository exploration.
     - Use `write` for prose and documentation artifacts when edits are explicitly needed.
     - Use `code` for implementation, tests, builds, or command execution.
-    - Use `web` for live web, browser-control, source extraction, screenshots, and citation-backed research.
+    - Use `web` for live web search, URL content extraction (Tavily/Exa), and citation-backed research.
     - Use `questionnaire` only for preflight clarification with the user before delegation begins, or at an explicit workflow checkpoint that says user input is required.
 
     ## Delegation Checklist

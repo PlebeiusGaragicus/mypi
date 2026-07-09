@@ -1,5 +1,7 @@
 # Browser Control
 
+> **Deprecated (2026-07-08).** Browser automation is set aside: the skill and runtime remain in the repo, but no preset includes them and no prompt references `$B`. Anti-scraping measures make a driven browser clunky and high-maintenance; mypi now leans on the Tavily and Exa APIs for search and URL content extraction (see [Skills](skills.md) and docs/proposals.md P8 for the FireCrawl evaluation).
+
 `browser-control` is the mypi browser automation skill and runtime. It supports navigation, snapshots, screenshots, scraping, and user-assisted challenge handling.
 
 ## Invocation

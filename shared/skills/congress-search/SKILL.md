@@ -12,9 +12,9 @@ These commands are **bash** programs, not Pi tools. Use the **bash** tool with t
 
 Scripts use only the Python standard library. They print readable text by default, support `--json` where useful, and print specific `Error:` lines to stderr on failure.
 
-## Congress.gov vs browser
+## Congress.gov API vs scraping
 
-Prefer this skill and the **Congress.gov API** for legislative data on congress.gov. Automated browsing of congress.gov often fails (bot protection); **`$B` is not a reliable way to scrape congress.gov**. Use **`$B`** for other sites when it fits the task — there is no global rule to always pick browser or API.
+Prefer this skill and the **Congress.gov API** for legislative data on congress.gov. Automated browsing of congress.gov often fails (bot protection).
 
 The API has **no full-text search**. Use `--keyword` on `congress-search` for best-effort filtering over listed results, or narrow with `--congress`, `--type`, and date filters.
 

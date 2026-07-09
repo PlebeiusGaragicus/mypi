@@ -6,6 +6,8 @@ disable-model-invocation: false
 
 # Browser Control
 
+> **Deprecated (2026-07-08).** This skill is kept in the repo but is not wired into any preset, and presets must not re-add it. The open web increasingly blocks automated browsers, which makes this path clunky and high-maintenance. Use the API-based skills instead: `tavily-search` / `tavily-extract` and `exa-search` / `exa-contents`.
+
 Read this skill before running **`$B`**, browser automation, screenshot commands, or HTTP fallback commands for a page that may require browser access.
 
 Do not try **`curl`**, **`wget`**, or **`fetch`** first when the task involves a live page, login, SPA, bot protection, visual inspection, or user interaction.
