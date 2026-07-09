@@ -35,6 +35,20 @@ interface UsageStats {
 	turns: number;
 }
 
+/** One rendered row in a worker's live activity feed; not persisted to the manifest. */
+interface TimelineEvent {
+	at: string;
+	kind: "tool" | "note";
+	/** Tool name, or a short label for notes. */
+	label: string;
+	/** Argument preview for tools, text snippet for notes. */
+	detail?: string;
+	durationMs?: number;
+	isError?: boolean;
+	/** Tools start pending and settle when tool_execution_end arrives. */
+	pending?: boolean;
+}
+
 interface WorkerResult {
 	index: number;
 	agent: string;
@@ -49,6 +63,14 @@ interface WorkerResult {
 	startedAt: string;
 	endedAt?: string;
 	traceDir: string;
+	/** Live one-line status while the worker runs; not persisted to the manifest. */
+	activity?: string;
+	/** Rolling feed of what the worker is doing, rendered live in the tool UI. */
+	timeline: TimelineEvent[];
+	/** Tail of the assistant text currently being streamed (cleared per turn). */
+	streamText?: string;
+	/** Characters of thinking streamed so far in the current turn. */
+	streamThinkingChars?: number;
 }
 
 interface TopLevelSubagentDetails {
@@ -138,6 +160,57 @@ function buildWorkerTask(task: string): string {
 		"Delegated task:",
 		task,
 	].join("\n");
+}
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+function spinnerFrame(): string {
+	return SPINNER_FRAMES[Math.floor(Date.now() / 120) % SPINNER_FRAMES.length];
+}
+
+function fmtSeconds(seconds: number): string {
+	if (seconds < 60) return `${seconds}s`;
+	return `${Math.floor(seconds / 60)}m${(seconds % 60).toString().padStart(2, "0")}s`;
+}
+
+function elapsedSince(startedAt: string): string {
+	return fmtSeconds(Math.max(0, Math.round((Date.now() - Date.parse(startedAt)) / 1000)));
+}
+
+function fmtDurationMs(ms: number): string {
+	if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+	return fmtSeconds(Math.round(ms / 1000));
+}
+
+function fmtCount(n: number): string {
+	if (n < 1000) return `${n}`;
+	return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+}
+
+function firstLine(text: string): string {
+	return text.split("\n").find((line) => line.trim()) ?? "";
+}
+
+function clip(text: string, max: number): string {
+	const flat = text.replace(/\s+/g, " ").trim();
+	return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/** Concatenated text / thinking streamed so far in a (possibly partial) message. */
+function messageParts(message: Message): { text: string; thinking: string } {
+	let text = "";
+	let thinking = "";
+	for (const part of message.content ?? []) {
+		if (part.type === "text") text += part.text ?? "";
+		else if (part.type === "thinking") thinking += (part as { thinking?: string }).thinking ?? "";
+	}
+	return { text, thinking };
+}
+
+function progressLine(result: WorkerResult): string {
+	if (result.endedAt) return compactResultLine(result);
+	const activity = result.activity || "starting";
+	return `[${result.agent}] running ${elapsedSince(result.startedAt)} · turn ${result.usage.turns + 1} · ${activity}`;
 }
 
 function currentWorkers(): string[] {
@@ -255,12 +328,13 @@ async function runWorker(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: WorkerResult[]) => TopLevelSubagentDetails,
+	liveResults: WorkerResult[],
 	traceManager: TraceManager,
 ): Promise<WorkerResult> {
 	const allowed = currentWorkers();
 	const manifestEntry = traceManager.startWorker(mode, agentName, task, defaultCwd);
 	const startedAt = manifestEntry.startedAt;
-	const baseResult: WorkerResult = {
+	const currentResult: WorkerResult = {
 		index: manifestEntry.index,
 		agent: agentName,
 		task,
@@ -270,33 +344,43 @@ async function runWorker(
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
 		startedAt,
 		traceDir: traceManager.traceDir,
+		timeline: [],
 	};
+	liveResults.push(currentResult);
 
 	if (!allowed.includes(agentName)) {
-		const result = {
-			...baseResult,
-			exitCode: 1,
-			stderr: `Unavailable worker "${agentName}". Available workers: ${allowed.join(", ") || "none"}.`,
-			endedAt: new Date().toISOString(),
-		};
-		traceManager.finishWorker(manifestEntry, result);
-		return result;
+		currentResult.exitCode = 1;
+		currentResult.stderr = `Unavailable worker "${agentName}". Available workers: ${allowed.join(", ") || "none"}.`;
+		currentResult.endedAt = new Date().toISOString();
+		traceManager.finishWorker(manifestEntry, currentResult);
+		return currentResult;
 	}
 
 	// Workers inherit the parent session's model: a fresh `pi` process would
 	// otherwise fall back to the global default model, so orchestrator and
 	// workers could silently run different models (and thrash model loads on
 	// a memory-constrained server). Preset model pins still win via activate().
+	//
+	// Thinking is forced off for workers: their tasks are bounded and the parent
+	// session's thinking level otherwise leaks in, turning each worker turn into
+	// minutes of silent local-model reasoning. A worker preset that declares its
+	// own thinkingLevel still wins — preset activation applies it in-session.
 	const args = ["--mode", "json", "--session-dir", traceManager.traceDir, "--preset", agentName];
 	if (parentModel) args.push("--model", parentModel);
+	args.push("--thinking", "off");
 	args.push("-p", buildWorkerTask(task));
-	const currentResult = baseResult;
-	const emitUpdate = () => {
-		onUpdate?.({
-			content: [{ type: "text", text: getFinalOutput(currentResult.messages) || "(running...)" }],
-			details: makeDetails([currentResult]),
+	let lastEmitAt = 0;
+	const emitUpdate = (force = true) => {
+		if (!onUpdate) return;
+		const now = Date.now();
+		if (!force && now - lastEmitAt < 1000) return;
+		lastEmitAt = now;
+		onUpdate({
+			content: [{ type: "text", text: liveResults.map(progressLine).join("\n") || "(running...)" }],
+			details: makeDetails(liveResults),
 		});
 	};
+	emitUpdate();
 
 	let wasAborted = false;
 	try {
@@ -309,18 +393,81 @@ async function runWorker(
 				env: { ...process.env, PI_IS_SUBAGENT: "1" },
 			});
 			let buffer = "";
+			const pendingTools = new Map<string, TimelineEvent>();
+			const pushEvent = (entry: TimelineEvent) => {
+				currentResult.timeline.push(entry);
+				// Rolling cap so a long worker cannot bloat the session entry.
+				if (currentResult.timeline.length > 200) currentResult.timeline.splice(0, currentResult.timeline.length - 200);
+			};
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
-				let event: { type?: string; message?: Message };
+				let event: {
+					type?: string;
+					message?: Message;
+					toolCallId?: string;
+					toolName?: string;
+					args?: unknown;
+					isError?: boolean;
+				};
 				try {
-					event = JSON.parse(line) as { type?: string; message?: Message };
+					event = JSON.parse(line) as typeof event;
 				} catch {
+					return;
+				}
+				if (event.type === "tool_execution_start" && event.toolName) {
+					const entry: TimelineEvent = {
+						at: new Date().toISOString(),
+						kind: "tool",
+						label: event.toolName,
+						detail: clip(JSON.stringify(event.args ?? {}), 100),
+						pending: true,
+					};
+					pushEvent(entry);
+					if (event.toolCallId) pendingTools.set(event.toolCallId, entry);
+					currentResult.activity = `${entry.label} ${entry.detail}`;
+					emitUpdate();
+					return;
+				}
+				if (event.type === "tool_execution_end") {
+					const entry = event.toolCallId ? pendingTools.get(event.toolCallId) : undefined;
+					if (entry) {
+						if (event.toolCallId) pendingTools.delete(event.toolCallId);
+						entry.pending = false;
+						entry.durationMs = Math.max(0, Date.now() - Date.parse(entry.at));
+						entry.isError = Boolean(event.isError);
+					}
+					emitUpdate();
+					return;
+				}
+				if (event.type === "message_update" && event.message?.role === "assistant") {
+					// The model is streaming a turn — on slow local models this is the
+					// minutes-long stretch that used to look like a hang.
+					const { text, thinking } = messageParts(event.message);
+					currentResult.streamText = text.slice(-400);
+					currentResult.streamThinkingChars = thinking.length;
+					currentResult.activity = text
+						? `writing (${fmtCount(text.length)} chars)`
+						: thinking
+							? `thinking (${fmtCount(thinking.length)} chars)`
+							: `model generating (turn ${currentResult.usage.turns + 1})`;
+					emitUpdate(false);
 					return;
 				}
 				if ((event.type === "message_end" || event.type === "tool_result_end") && event.message) {
 					currentResult.messages.push(event.message);
 					if (event.message.role === "assistant") {
 						currentResult.usage.turns++;
+						currentResult.streamText = undefined;
+						currentResult.streamThinkingChars = undefined;
+						const { text } = messageParts(event.message);
+						if (text.trim()) {
+							pushEvent({
+								at: new Date().toISOString(),
+								kind: "note",
+								label: `turn ${currentResult.usage.turns}`,
+								detail: clip(firstLine(text), 100),
+							});
+						}
 						const usage = event.message.usage;
 						if (usage) {
 							currentResult.usage.input += usage.input || 0;
@@ -333,6 +480,9 @@ async function runWorker(
 						if (!currentResult.model && event.message.model) currentResult.model = event.message.model;
 						if (event.message.stopReason) currentResult.stopReason = event.message.stopReason;
 						if (event.message.errorMessage) currentResult.errorMessage = event.message.errorMessage;
+					} else {
+						// A tool result just landed; the next silence is model inference.
+						currentResult.activity = `model turn ${currentResult.usage.turns + 1} starting`;
 					}
 					emitUpdate();
 				}
@@ -480,9 +630,9 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 						signal,
 						onUpdate,
 						makeDetails("chain"),
+						results,
 						traceManager,
 					);
-					results.push(result);
 					if (isErrorResult(result)) {
 						const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 						return {
@@ -507,9 +657,10 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 						isError: true,
 					};
 				}
+				const live: WorkerResult[] = [];
 				const results = await Promise.all(
 					params.tasks.map((task) =>
-						runWorker(ctx.cwd, parentModel, task.agent, task.task, "parallel", signal, undefined, makeDetails("parallel"), traceManager),
+						runWorker(ctx.cwd, parentModel, task.agent, task.task, "parallel", signal, onUpdate, makeDetails("parallel"), live, traceManager),
 					),
 				);
 				const successCount = results.filter((result) => !isErrorResult(result)).length;
@@ -526,7 +677,7 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 			}
 
 			if (params.agent && params.task) {
-				const result = await runWorker(ctx.cwd, parentModel, params.agent, params.task, "single", signal, onUpdate, makeDetails("single"), traceManager);
+				const result = await runWorker(ctx.cwd, parentModel, params.agent, params.task, "single", signal, onUpdate, makeDetails("single"), [], traceManager);
 				if (isErrorResult(result)) {
 					const errorMsg = result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
 					return {
@@ -549,14 +700,18 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 		},
 
 		renderCall(args, theme) {
-			const preview = args.task ? String(args.task).slice(0, 72) : args.tasks ? `parallel (${args.tasks.length})` : args.chain ? `chain (${args.chain.length})` : "...";
-			return new Text(
-				theme.fg("toolTitle", theme.bold("subagent ")) +
-					theme.fg("accent", `${args.agent || ""}`) +
-					`\n  ${theme.fg("dim", preview)}`,
-				0,
-				0,
-			);
+			const title = theme.fg("toolTitle", theme.bold("subagent"));
+			if (args.tasks?.length) {
+				const lines = args.tasks
+					.slice(0, 4)
+					.map((t: { agent?: string; task?: string }, i: number) => `  ${theme.fg("dim", `${i + 1}.`)} ${theme.fg("accent", t.agent ?? "?")} ${theme.fg("dim", clip(String(t.task ?? ""), 80))}`);
+				return new Text(`${title} ${theme.fg("accent", `×${args.tasks.length} parallel`)}\n${lines.join("\n")}`, 0, 0);
+			}
+			if (args.chain?.length) {
+				const hops = args.chain.map((t: { agent?: string }) => t.agent ?? "?").join(" → ");
+				return new Text(`${title} ${theme.fg("accent", `chain ${hops}`)}\n  ${theme.fg("dim", clip(String(args.chain[0]?.task ?? ""), 80))}`, 0, 0);
+			}
+			return new Text(`${title} ${theme.fg("accent", `${args.agent || ""}`)}\n  ${theme.fg("dim", clip(String(args.task ?? "…"), 100))}`, 0, 0);
 		},
 
 		renderResult(result, { expanded }, theme) {
@@ -567,26 +722,84 @@ export default function workflowOrchestrator(pi: ExtensionAPI): void {
 			}
 			const mdTheme = getMarkdownTheme();
 			const container = new Container();
-			container.addChild(
-				new Text(`${theme.fg("toolTitle", theme.bold("trace"))} ${theme.fg("accent", details.traceRunId)} ${theme.fg("dim", details.traceDir)}`, 0, 0),
-			);
+			const gutter = (line: string) => new Text(`${theme.fg("dim", "│")} ${line}`, 0, 0);
+
+			const timelineRow = (ev: TimelineEvent): string => {
+				if (ev.kind === "note") {
+					return `${theme.fg("muted", "✎")} ${theme.fg("dim", ev.label)} ${theme.fg("muted", `“${ev.detail ?? ""}”`)}`;
+				}
+				const suffix = ev.pending
+					? theme.fg("accent", spinnerFrame())
+					: ev.isError
+						? theme.fg("error", "✗") + (ev.durationMs != null ? theme.fg("dim", ` ${fmtDurationMs(ev.durationMs)}`) : "")
+						: theme.fg("success", "✓") + (ev.durationMs != null ? theme.fg("dim", ` ${fmtDurationMs(ev.durationMs)}`) : "");
+				return `${theme.fg("accent", "✱")} ${theme.fg("toolTitle", ev.label)} ${theme.fg("dim", ev.detail ?? "")} ${suffix}`;
+			};
+
 			for (const worker of details.results) {
 				// endedAt is unset while the worker is still streaming; an empty reply
 				// only counts as an error once the process has finished.
-				const status = !worker.endedAt
-					? theme.fg("dim", "[running]")
-					: isErrorResult(worker)
-						? theme.fg("error", "[error]")
-						: theme.fg("success", "[ok]");
-				container.addChild(new Spacer(1));
-				container.addChild(new Text(`${status} ${theme.fg("toolTitle", worker.agent)}`, 0, 0));
-				const output = getFinalOutput(worker.messages).trim() || worker.stderr.trim() || "(no output)";
-				const shown = expanded ? output : output.split("\n").slice(0, 8).join("\n");
-				container.addChild(new Markdown(shown, 0, 0, mdTheme));
-				if (!expanded && output.split("\n").length > 8) {
-					container.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), 0, 0));
+				const running = !worker.endedAt;
+				const failed = !running && isErrorResult(worker);
+				const usage = worker.usage;
+
+				if (worker !== details.results[0]) container.addChild(new Spacer(1));
+
+				const icon = running ? theme.fg("accent", spinnerFrame()) : failed ? theme.fg("error", "✗") : theme.fg("success", "✓");
+				const stats = running
+					? `running ${elapsedSince(worker.startedAt)} · turn ${usage.turns + 1}${usage.contextTokens ? ` · ${fmtCount(usage.contextTokens)} ctx` : ""}`
+					: [
+							failed ? failureReason(worker) : null,
+							`${usage.turns} ${usage.turns === 1 ? "turn" : "turns"}`,
+							worker.endedAt ? fmtSeconds(Math.max(0, Math.round((Date.parse(worker.endedAt) - Date.parse(worker.startedAt)) / 1000))) : null,
+							usage.input ? `in ${fmtCount(usage.input)}` : null,
+							usage.output ? `out ${fmtCount(usage.output)}` : null,
+							usage.cost ? `$${usage.cost.toFixed(4)}` : null,
+						]
+							.filter(Boolean)
+							.join(" · ");
+				container.addChild(
+					new Text(`${theme.fg("dim", "╭─")} ${icon} ${theme.bold(theme.fg(failed ? "error" : "toolTitle", worker.agent))} ${theme.fg("dim", stats)}`, 0, 0),
+				);
+				if (expanded && worker.model) container.addChild(gutter(theme.fg("muted", worker.model)));
+
+				// Sessions saved before timelines existed deserialize without one.
+				const timeline = worker.timeline ?? [];
+				const visible = expanded ? timeline : timeline.slice(-4);
+				const hidden = timeline.length - visible.length;
+				if (hidden > 0) container.addChild(gutter(theme.fg("muted", `… ${hidden} earlier ${hidden === 1 ? "step" : "steps"} (Ctrl+O)`)));
+				for (const ev of visible) container.addChild(gutter(timelineRow(ev)));
+
+				if (running) {
+					container.addChild(gutter(`${theme.fg("accent", spinnerFrame())} ${theme.fg("dim", worker.activity || "starting")}`));
+					const tail = worker.streamText?.trim();
+					if (tail) {
+						const preview = clip(tail.slice(-(expanded ? 360 : 140)), expanded ? 360 : 140);
+						container.addChild(gutter(theme.fg("muted", `▏ …${preview}`)));
+					}
+					container.addChild(new Text(theme.fg("dim", "╰─"), 0, 0));
+					continue;
 				}
+
+				const output = getFinalOutput(worker.messages).trim();
+				if (output) {
+					container.addChild(new Text(`${theme.fg("dim", "├─")} ${theme.fg("muted", "reply")}`, 0, 0));
+					const shown = expanded ? output : output.split("\n").slice(0, 8).join("\n");
+					container.addChild(new Markdown(shown, 0, 0, mdTheme));
+					if (!expanded && output.split("\n").length > 8) {
+						container.addChild(new Text(theme.fg("muted", "(Ctrl+O to expand)"), 0, 0));
+					}
+				} else if (worker.errorMessage || worker.stderr.trim()) {
+					container.addChild(gutter(theme.fg("error", clip(worker.errorMessage || worker.stderr, expanded ? 600 : 200))));
+				} else {
+					container.addChild(gutter(theme.fg("muted", "(no output)")));
+				}
+				container.addChild(new Text(theme.fg("dim", "╰─"), 0, 0));
 			}
+
+			container.addChild(
+				new Text(theme.fg("muted", `  trace ${details.traceRunId}${expanded ? ` · ${details.traceDir}` : ""}`), 0, 0),
+			);
 			return container;
 		},
 	});
