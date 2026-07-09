@@ -308,7 +308,11 @@ export default function presetExtension(pi: ExtensionAPI): void {
 
 		const cliPreset = normalizePresetName(pi.getFlag("preset"));
 		let restored = cliPreset;
-		if (!restored && ev.reason === "reload") {
+		// "reload" re-reads the current session; "resume" loads a prior session's
+		// entries; "startup" covers `pi --continue`-style launches into an existing
+		// session. In all three the loaded entries carry the saved preset state —
+		// a genuinely fresh session simply has none, so this is a no-op there.
+		if (!restored && (ev.reason === "reload" || ev.reason === "resume" || ev.reason === "startup")) {
 			restored = findLastSavedPreset(ctx.sessionManager.getEntries());
 		}
 		if (!restored && ev.reason === "fork" && ev.previousSessionFile) {
